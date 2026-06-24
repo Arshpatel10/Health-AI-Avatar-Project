@@ -1,26 +1,121 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* HealthAI Color Palette - Light & Airy */
+  --primary: #2196F3;
+  --on-primary: #ffffff;
+  --primary-container: #3BADE5;
+  --on-primary-container: #ffffff;
+
+  --secondary: #64748b;
+  --on-secondary: #ffffff;
+  --secondary-container: #e2e8f0;
+  --on-secondary-container: #475569;
+
+  --tertiary: #576065;
+  --on-tertiary: #ffffff;
+  --tertiary-container: #949da3;
+  --on-tertiary-container: #2c3539;
+
+  --error: #dc2626;
+  --on-error: #ffffff;
+  --error-container: #fef2f2;
+  --on-error-container: #991b1b;
+
+  --background: #f8fafc;
+  --on-background: #334155;
+  --surface: #ffffff;
+  --on-surface: #334155;
+  --surface-variant: #f1f5f9;
+  --on-surface-variant: #64748b;
+
+  --surface-container: #f1f5f9;
+  --surface-container-low: #f8fafc;
+  --surface-container-high: #e2e8f0;
+  --surface-container-highest: #cbd5e1;
+  --surface-container-lowest: #ffffff;
+
+  --outline: #94a3b8;
+  --outline-variant: #e2e8f0;
+
+  --inverse-surface: #1e293b;
+  --inverse-on-surface: #f1f5f9;
+  --inverse-primary: #60a5fa;
+
+  --surface-tint: #2196F3;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-primary: var(--primary);
+  --color-on-primary: var(--on-primary);
+  --color-primary-container: var(--primary-container);
+  --color-on-primary-container: var(--on-primary-container);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-secondary: var(--secondary);
+  --color-on-secondary: var(--on-secondary);
+  --color-secondary-container: var(--secondary-container);
+  --color-on-secondary-container: var(--on-secondary-container);
+
+  --color-error: var(--error);
+  --color-on-error: var(--on-error);
+  --color-error-container: var(--error-container);
+  --color-on-error-container: var(--on-error-container);
+
+  --color-background: var(--background);
+  --color-on-background: var(--on-background);
+  --color-surface: var(--surface);
+  --color-on-surface: var(--on-surface);
+  --color-surface-variant: var(--surface-variant);
+  --color-on-surface-variant: var(--on-surface-variant);
+
+  --color-surface-container: var(--surface-container);
+  --color-surface-container-low: var(--surface-container-low);
+  --color-surface-container-high: var(--surface-container-high);
+
+  --color-outline: var(--outline);
+  --color-outline-variant: var(--outline-variant);
+
+  --font-sans: "Inter", system-ui, sans-serif;
 }
 
 body {
   background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--on-surface);
+  font-family: "Inter", system-ui, sans-serif;
+  overflow: hidden;
+}
+
+/* Custom scrollbar for chat area */
+.chat-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-scroll::-webkit-scrollbar-thumb {
+  background: var(--outline-variant);
+  border-radius: 10px;
+}
+
+/* AI glow effect */
+.ai-glow {
+  box-shadow: 0 0 20px rgba(59, 173, 229, 0.15);
+}
+
+/* Pulse animation for AI thinking */
+.pulse-effect {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.05);
+  }
 }
