@@ -5,16 +5,24 @@ import { useState } from "react";
 interface MessageInputProps {
   onSend: (text: string) => void;
   disabled?: boolean;
+  onTypingChange?: (isTyping: boolean) => void;
 }
 
-export default function MessageInput({ onSend, disabled = false }: MessageInputProps) {
+export default function MessageInput({ onSend, disabled = false, onTypingChange }: MessageInputProps) {
   const [text, setText] = useState("");
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newText = e.target.value;
+    setText(newText);
+    onTypingChange?.(newText.length > 0);
+  };
 
   const handleSubmit = () => {
     const trimmed = text.trim();
     if (trimmed) {
       onSend(trimmed);
       setText("");
+      onTypingChange?.(false);
     }
   };
 
@@ -41,7 +49,7 @@ export default function MessageInput({ onSend, disabled = false }: MessageInputP
         id="message-input"
         type="text"
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={handleChange}
         onKeyDown={handleKeyDown}
         disabled={disabled}
         placeholder="Describe your symptoms..."

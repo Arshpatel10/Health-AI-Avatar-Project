@@ -22,7 +22,7 @@ const NORMAL_RESPONSES: MockEntry[] = [
       answer:
         "Soluble fiber from foods like oats, beans, and apples can help lower LDL cholesterol. This is general educational information; please discuss treatment options with your clinician.",
       evidence_used: [
-        { document_id: "doc_1", chunk_id: "chunk_2", title: "Dietary Fiber and Cardiovascular Health", snippet: "Soluble fiber binds bile acids, which can reduce circulating LDL cholesterol." },
+        { document_id: "doc_1", chunk_id: "chunk_2", title: "Dietary Fiber and Cardiovascular Health", snippet: "Soluble fiber binds bile acids, which can reduce circulating LDL cholesterol.", url: "https://www.heart.org/en/healthy-living/healthy-eating/eat-smart/nutrition-basics/dietary-fiber" },
       ],
       guardrail_triggered: false,
       emotion_state: "supportive",
@@ -34,7 +34,7 @@ const NORMAL_RESPONSES: MockEntry[] = [
       answer:
         "General guidance suggests roughly 2 to 3 liters of total water per day for most adults, including water from food. Your needs vary with activity, climate, and health conditions.",
       evidence_used: [
-        { document_id: "doc_2", chunk_id: "chunk_1", title: "Hydration Guidelines for Adults", snippet: "Total daily water intake includes fluids from beverages and food; needs vary." },
+        { document_id: "doc_2", chunk_id: "chunk_1", title: "Hydration Guidelines for Adults", snippet: "Total daily water intake includes fluids from beverages and food; needs vary.", url: "https://www.mayoclinic.org/healthy-lifestyle/nutrition-and-healthy-eating/in-depth/water/art-20044256" },
       ],
       guardrail_triggered: false,
       emotion_state: "neutral",
@@ -46,7 +46,7 @@ const NORMAL_RESPONSES: MockEntry[] = [
       answer:
         "Most adults do best with 7 to 9 hours of sleep per night. A consistent schedule and limiting screens before bed can help. If poor sleep persists, it's worth discussing with your clinician.",
       evidence_used: [
-        { document_id: "doc_3", chunk_id: "chunk_4", title: "Sleep Duration Recommendations", snippet: "Adults are generally advised to get 7 to 9 hours of sleep for optimal health." },
+        { document_id: "doc_3", chunk_id: "chunk_4", title: "Sleep Duration Recommendations", snippet: "Adults are generally advised to get 7 to 9 hours of sleep for optimal health.", url: "https://www.cdc.gov/sleep/about_sleep/how_much_sleep.html" },
       ],
       guardrail_triggered: false,
       emotion_state: "supportive",

@@ -1,10 +1,14 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { ChatMessage } from "@/lib/types";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { ChatMessage, EmotionState } from "@/lib/types";
 import { getCoachResponse } from "@/lib/mockBackend";
+import { getSpeechService, VoiceOption } from "@/lib/speech";
 import MessageInput from "./MessageInput";
 import MessageBubble from "./MessageBubble";
+import Avatar, { AvatarState } from "./Avatar";
+import WarningPopup from "./WarningPopup";
+import VoiceSelector from "./VoiceSelector";
 
 export default function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -12,22 +16,88 @@ export default function Chat() {
   const [isTyping, setIsTyping] = useState(false);
   const [displayedText, setDisplayedText] = useState("");
   const [fullResponse, setFullResponse] = useState<ChatMessage | null>(null);
+  const [userIsTyping, setUserIsTyping] = useState(false);
+  const [showWarning, setShowWarning] = useState(false);
+  const [warningMessage, setWarningMessage] = useState("");
+  const [selectedVoice, setSelectedVoice] = useState<VoiceOption>("voice1");
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [currentEmotionState, setCurrentEmotionState] = useState<EmotionState>("neutral");
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const speechServiceRef = useRef<ReturnType<typeof getSpeechService> | null>(null);
+
+  // Initialize speech service
+  useEffect(() => {
+    speechServiceRef.current = getSpeechService();
+    speechServiceRef.current.setOnSpeakingChange(setIsSpeaking);
+  }, []);
+
+  // Update voice when selection changes
+  useEffect(() => {
+    if (speechServiceRef.current) {
+      speechServiceRef.current.setVoiceOption(selectedVoice);
+    }
+  }, [selectedVoice]);
+
+  // Map emotion state to avatar state for speech tone
+  const getAvatarStateForSpeech = useCallback((emotion: EmotionState, guardrailTriggered: boolean): AvatarState => {
+    if (guardrailTriggered) return "warning";
+    switch (emotion) {
+      case "supportive": return "supportive";
+      case "warning": return "warning";
+      default: return "speaking";
+    }
+  }, []);
+
+  // Determine avatar state based on current activity
+  const getAvatarState = (): AvatarState => {
+    if (showWarning) return "warning";
+    if (isSpeaking) return "speaking";
+    if (isTyping) return "speaking";
+    if (isLoading) return "listening";
+    if (userIsTyping) return "thinking";
+    return "idle";
+  };
+
+  const avatarState = getAvatarState();
 
   // Scroll to bottom when messages change
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, displayedText, isLoading]);
 
-  // Typing effect
+  // Start speech when response comes in
+  useEffect(() => {
+    if (fullResponse && fullResponse.role === "assistant" && isTyping && displayedText.length === 0) {
+      const fullText = fullResponse.response.answer;
+
+      // Trigger speech immediately with appropriate tone
+      const speechState = getAvatarStateForSpeech(
+        fullResponse.response.emotion_state,
+        fullResponse.response.guardrail_triggered
+      );
+      setCurrentEmotionState(fullResponse.response.emotion_state);
+
+      if (speechServiceRef.current) {
+        speechServiceRef.current.speak(fullText, speechState).catch(console.error);
+      }
+    }
+  }, [fullResponse, isTyping, displayedText.length, getAvatarStateForSpeech]);
+
+  // Typing effect - synced with speech timing
   useEffect(() => {
     if (fullResponse && fullResponse.role === "assistant" && isTyping) {
       const fullText = fullResponse.response.answer;
 
       if (displayedText.length < fullText.length) {
+        // Calculate typing speed based on text length
+        // Average speech rate is ~150 words per minute, ~750 characters per minute
+        // That's about 12.5 chars per second, or 80ms per char
+        // We'll use a slightly faster typing speed for better visual experience
+        const typingSpeed = Math.max(25, Math.min(50, (fullText.length / 150) * 1000 / fullText.length));
+
         const timeout = setTimeout(() => {
           setDisplayedText(fullText.slice(0, displayedText.length + 1));
-        }, 15); // Adjust speed here (lower = faster)
+        }, typingSpeed);
         return () => clearTimeout(timeout);
       } else {
         // Typing complete, add the full message to messages array
@@ -50,6 +120,12 @@ export default function Chat() {
       const response = await getCoachResponse(text);
       const assistantMessage: ChatMessage = { role: "assistant", response };
 
+      // Check if guardrail was triggered and show warning popup
+      if (response.guardrail_triggered) {
+        setWarningMessage(response.answer);
+        setShowWarning(true);
+      }
+
       // Start typing effect
       setIsLoading(false);
       setFullResponse(assistantMessage);
@@ -62,6 +138,14 @@ export default function Chat() {
 
   return (
     <div className="flex flex-col h-screen bg-background">
+      {/* Warning Popup */}
+      {showWarning && (
+        <WarningPopup
+          message={warningMessage}
+          onClose={() => setShowWarning(false)}
+        />
+      )}
+
       {/* Header */}
       <header className="flex justify-between items-center w-full px-6 h-16 sticky top-0 z-50 bg-surface border-b border-outline-variant">
         <div className="flex items-center gap-4">
@@ -88,8 +172,30 @@ export default function Chat() {
       </header>
 
       {/* Main Content */}
-      <main className="flex flex-1 overflow-hidden justify-center bg-background">
-        <section className="w-full max-w-4xl mx-auto flex flex-col h-full">
+      <main className="flex flex-1 overflow-hidden bg-background">
+        {/* Avatar Section - Left Side */}
+        <section className="w-1/2 flex items-center justify-center border-r border-outline-variant bg-gradient-to-b from-surface to-surface-variant relative">
+          <div className="flex flex-col items-center">
+            <Avatar
+              width={500}
+              height={600}
+              isListening={isLoading}
+              isSpeaking={isSpeaking}
+              state={avatarState}
+            />
+          </div>
+
+          {/* Voice Selector - Bottom Left */}
+          <div className="absolute bottom-6 left-6">
+            <VoiceSelector
+              selectedVoice={selectedVoice}
+              onVoiceChange={setSelectedVoice}
+            />
+          </div>
+        </section>
+
+        {/* Chat Section - Right Side */}
+        <section className="w-1/2 flex flex-col h-full">
           {/* Chat Scrollable Area */}
           <div
             className="flex-1 overflow-y-auto chat-scroll p-6 space-y-8"
@@ -156,7 +262,11 @@ export default function Chat() {
 
           {/* Input Box */}
           <div className="p-6 bg-background border-t border-outline-variant">
-            <MessageInput onSend={handleSend} disabled={isLoading || isTyping} />
+            <MessageInput
+              onSend={handleSend}
+              disabled={isLoading || isTyping}
+              onTypingChange={setUserIsTyping}
+            />
           </div>
         </section>
       </main>

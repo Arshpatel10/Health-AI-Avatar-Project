@@ -27,20 +27,37 @@ function WarningIcon() {
 
 function EvidenceItem({ source }: { source: EvidenceSource }) {
   const [expanded, setExpanded] = useState(false);
+  const title = source.title || `Source: ${source.document_id}`;
 
   return (
     <div className="border-l-2 border-white/30 pl-3">
-      <button
-        type="button"
-        onClick={() => setExpanded(!expanded)}
-        className="text-left text-sm font-medium text-white/90 hover:text-white focus:outline-none focus:underline"
-        aria-expanded={expanded}
-      >
-        {source.title || `Source: ${source.document_id}`}
-        <span className="ml-1 text-xs text-white/70">{expanded ? "▼" : "▶"}</span>
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          className="text-left text-sm font-medium text-white/90 hover:text-white focus:outline-none focus:underline"
+          aria-expanded={expanded}
+        >
+          <span className="text-xs text-white/70">{expanded ? "▼" : "▶"}</span>
+        </button>
+        {source.url ? (
+          <a
+            href={source.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm font-medium text-white/90 hover:text-white hover:underline"
+          >
+            {title}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 inline-block ml-1">
+              <path fillRule="evenodd" d="M4.25 5.5a.75.75 0 00-.75.75v8.5c0 .414.336.75.75.75h8.5a.75.75 0 00.75-.75v-4a.75.75 0 011.5 0v4A2.25 2.25 0 0112.75 17h-8.5A2.25 2.25 0 012 14.75v-8.5A2.25 2.25 0 014.25 4h5a.75.75 0 010 1.5h-5zm4.943-.25a.75.75 0 01.75-.75h5.022a.75.75 0 01.75.75v5.022a.75.75 0 01-1.5 0V6.56l-5.22 5.22a.75.75 0 01-1.06-1.06l5.22-5.22h-3.212a.75.75 0 01-.75-.75z" clipRule="evenodd" />
+            </svg>
+          </a>
+        ) : (
+          <span className="text-sm font-medium text-white/90">{title}</span>
+        )}
+      </div>
       {expanded && source.snippet && (
-        <p className="mt-1 text-xs text-white/80 italic">{source.snippet}</p>
+        <p className="mt-1 text-xs text-white/80 italic ml-5">{source.snippet}</p>
       )}
     </div>
   );

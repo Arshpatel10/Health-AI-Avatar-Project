@@ -5,6 +5,7 @@ export interface EvidenceSource {
   chunk_id: string;
   title?: string;
   snippet?: string;
+  url?: string;
 }
 
 export interface CoachResponse {
