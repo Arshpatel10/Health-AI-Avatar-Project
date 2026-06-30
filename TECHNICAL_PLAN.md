@@ -52,6 +52,9 @@ The UI is built against this shape. It is provisional and to be confirmed with t
 ## Questions to consider moving forward
  - Any specific design requirments
  - Will there be any authentication and session requirements?
+
  - What does the schema look like, will the field names and types need changing?
  - Do we need a seperate chat area for different types of responses, i.e. Urgent responses showing up in a different box.
-- Name?
+
+
+realistic avatar - user friendly 
