@@ -6,9 +6,10 @@ interface MessageInputProps {
   onSend: (text: string) => void;
   disabled?: boolean;
   onTypingChange?: (isTyping: boolean) => void;
+  placeholder?: string;
 }
 
-export default function MessageInput({ onSend, disabled = false, onTypingChange }: MessageInputProps) {
+export default function MessageInput({ onSend, disabled = false, onTypingChange, placeholder = "Describe your symptoms..." }: MessageInputProps) {
   const [text, setText] = useState("");
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -52,7 +53,7 @@ export default function MessageInput({ onSend, disabled = false, onTypingChange 
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         disabled={disabled}
-        placeholder="Describe your symptoms..."
+        placeholder={placeholder}
         className="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none text-base text-on-surface py-2 placeholder:text-on-surface-variant"
       />
 

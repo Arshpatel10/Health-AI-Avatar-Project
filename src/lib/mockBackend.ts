@@ -56,10 +56,10 @@ const NORMAL_RESPONSES: MockEntry[] = [
 
 const DEFAULT_RESPONSE: CoachResponse = {
   answer:
-    "This is general educational information. I don't have a specific source for that question, so please discuss it with your clinician for advice tailored to you.",
+    "I'm not quite sure about that specific question. This is general educational information, so please discuss it with your clinician for advice tailored to you.",
   evidence_used: [],
   guardrail_triggered: false,
-  emotion_state: "neutral",
+  emotion_state: "confused",
 };
 
 function matchNormalResponse(query: string): CoachResponse {
