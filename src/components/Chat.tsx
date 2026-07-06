@@ -46,50 +46,69 @@ export default function Chat() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Handle user transcription from voice
-  const handleUserTranscription = useCallback((text: string) => {
+  // Handle user transcription from voice - route through mock backend
+  const handleUserTranscription = useCallback(async (text: string) => {
     setIsWarningActive(false); // Clear warning state on new voice input
     setEmotionState(null); // Clear emotion state on new input
+
+    // Add user message to chat
     const userMessage: ChatMessage = { role: "user", text };
     setMessages((prev) => [...prev, userMessage]);
+
+    // Interrupt any HeyGen AI response that might be starting
+    if (avatarRef.current) {
+      avatarRef.current.interrupt();
+    }
+
+    setIsProcessing(true);
+
+    try {
+      // Get response from mock backend instead of HeyGen's AI
+      const response = await getCoachResponse(text);
+
+      // Check for warning
+      if (response.guardrail_triggered) {
+        setWarningMessage(response.answer);
+        setShowWarning(true);
+        setIsWarningActive(true);
+      }
+
+      // Set emotion state based on response
+      setEmotionState(response.emotion_state);
+
+      // Add assistant message to chat
+      const assistantMessage: ChatMessage = { role: "assistant", response };
+      setMessages((prev) => [...prev, assistantMessage]);
+
+      // Have the avatar speak the response from our backend
+      if (avatarRef.current) {
+        pendingTextResponseRef.current = response.answer; // Mark to avoid duplicate in transcription
+        avatarRef.current.speakText(response.answer);
+      }
+    } catch (error) {
+      console.error("Error getting response:", error);
+    } finally {
+      setIsProcessing(false);
+    }
   }, []);
 
-  // Handle avatar transcription (what the AI says)
+  // Handle avatar transcription (what the avatar says)
+  // We now route all responses through our mock backend, so we only use this
+  // to clear the pending response marker (avoid duplicate messages)
   const handleAvatarTranscription = useCallback((text: string) => {
-    // Skip if this is a response we initiated via text input (already added to chat)
+    // If this is a response we initiated (from our backend), just clear the marker
     if (pendingTextResponseRef.current) {
-      // Check if the transcription matches what we sent (allowing for minor differences)
       const pending = pendingTextResponseRef.current.toLowerCase().substring(0, 50);
       const transcribed = text.toLowerCase().substring(0, 50);
       if (pending === transcribed || text.includes(pendingTextResponseRef.current.substring(0, 30))) {
-        pendingTextResponseRef.current = null; // Clear the pending response
-        return; // Skip adding duplicate
+        pendingTextResponseRef.current = null;
+        return; // Already added to chat when we got backend response
       }
     }
 
-    // Check for warning keywords
-    const warningKeywords = ["emergency", "911", "call emergency", "seek immediate", "life-threatening"];
-    const isWarning = warningKeywords.some(keyword => text.toLowerCase().includes(keyword));
-
-    if (isWarning) {
-      setWarningMessage(text);
-      setShowWarning(true);
-      setIsWarningActive(true);
-      setEmotionState("warning");
-    } else {
-      setEmotionState("neutral");
-    }
-
-    const assistantMessage: ChatMessage = {
-      role: "assistant",
-      response: {
-        answer: text,
-        emotion_state: isWarning ? "warning" : "neutral",
-        guardrail_triggered: isWarning,
-        evidence_used: [],
-      },
-    };
-    setMessages((prev) => [...prev, assistantMessage]);
+    // Ignore any other avatar speech (HeyGen's AI responses that slipped through)
+    // All responses should come from our mock backend
+    console.log("Ignoring HeyGen AI response:", text.substring(0, 50) + "...");
   }, []);
 
   // Handle avatar state changes
@@ -160,9 +179,6 @@ export default function Chat() {
       <header className="flex justify-between items-center w-full px-6 h-16 sticky top-0 z-50 bg-surface border-b border-outline-variant">
         <div className="flex items-center gap-4">
           <span className="text-2xl font-bold text-primary">HealthAI</span>
-          <span className="text-sm text-on-surface-variant px-2 py-1 bg-primary-container rounded-full">
-            LiveAvatar
-          </span>
         </div>
         <div className="flex items-center gap-4">
           <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm transition-colors ${
@@ -323,10 +339,50 @@ export default function Chat() {
               onTypingChange={setIsTyping}
               disabled={isProcessing || (avatarState !== "connected" && avatarState !== "listening" && avatarState !== "speaking")}
               placeholder={isProcessing ? "Processing..." : avatarState === "connected" ? "Type a message or speak to the avatar..." : "Waiting for avatar connection..."}
+              onMicToggle={(isMuted) => {
+                if (avatarRef.current) {
+                  if (isMuted) {
+                    avatarRef.current.muteVoice();
+                  } else {
+                    avatarRef.current.unmuteVoice();
+                  }
+                }
+              }}
+              isMicAvailable={avatarState === "connected" || avatarState === "listening" || avatarState === "speaking"}
             />
-            <p className="text-xs text-center text-on-surface-variant mt-2">
-              Type a message or speak directly to the avatar
-            </p>
+            <div className="flex items-center justify-center gap-2 mt-2">
+              <span className={`w-2 h-2 rounded-full transition-colors ${
+                displayState === "warning"
+                  ? "bg-red-500 animate-pulse"
+                  : displayState === "thinking"
+                  ? "bg-yellow-500 animate-pulse"
+                  : displayState === "listening"
+                  ? "bg-blue-500 animate-pulse"
+                  : displayState === "speaking"
+                  ? "bg-purple-500 animate-pulse"
+                  : displayState === "supportive"
+                  ? "bg-teal-500"
+                  : displayState === "confused"
+                  ? "bg-orange-500"
+                  : displayState === "connecting"
+                  ? "bg-yellow-500 animate-pulse"
+                  : displayState === "idle"
+                  ? "bg-green-500"
+                  : "bg-gray-400"
+              }`} />
+              <p className="text-xs text-on-surface-variant">
+                {displayState === "idle" && "Ready"}
+                {displayState === "listening" && "Listening..."}
+                {displayState === "thinking" && "Thinking..."}
+                {displayState === "speaking" && "Speaking..."}
+                {displayState === "supportive" && "Supportive"}
+                {displayState === "warning" && "Warning"}
+                {displayState === "confused" && "Unsure"}
+                {displayState === "connecting" && "Connecting..."}
+                {displayState === "disconnected" && "Disconnected"}
+                {displayState === "error" && "Error"}
+              </p>
+            </div>
           </div>
         </section>
       </main>
