@@ -20,6 +20,9 @@ export interface LiveAvatarHandle {
   sendMessage: (text: string) => void;
   speakText: (text: string) => void;
   interrupt: () => void;
+  muteVoice: () => void;
+  unmuteVoice: () => void;
+  isVoiceMuted: () => boolean;
 }
 
 interface LiveAvatarProps {
@@ -48,6 +51,7 @@ const LiveAvatar = forwardRef<LiveAvatarHandle, LiveAvatarProps>(function LiveAv
 
   const [state, setState] = useState<LiveAvatarState>("disconnected");
   const [isLoading, setIsLoading] = useState(false);
+  const [isVoiceMuted, setIsVoiceMuted] = useState(false);
 
   const updateState = useCallback((newState: LiveAvatarState) => {
     setState(newState);
@@ -233,12 +237,36 @@ const LiveAvatar = forwardRef<LiveAvatarHandle, LiveAvatarProps>(function LiveAv
     }
   }, []);
 
+  // Mute voice chat (stop listening to user speech)
+  const muteVoice = useCallback(() => {
+    if (sessionRef.current?.voiceChat) {
+      sessionRef.current.voiceChat.stop();
+      setIsVoiceMuted(true);
+    }
+  }, []);
+
+  // Unmute voice chat (resume listening to user speech)
+  const unmuteVoice = useCallback(() => {
+    if (sessionRef.current?.voiceChat) {
+      sessionRef.current.voiceChat.start();
+      setIsVoiceMuted(false);
+    }
+  }, []);
+
+  // Check if voice is muted
+  const getIsVoiceMuted = useCallback(() => {
+    return isVoiceMuted;
+  }, [isVoiceMuted]);
+
   // Expose methods to parent component via ref
   useImperativeHandle(ref, () => ({
     sendMessage,
     speakText,
     interrupt,
-  }), [sendMessage, speakText, interrupt]);
+    muteVoice,
+    unmuteVoice,
+    isVoiceMuted: getIsVoiceMuted,
+  }), [sendMessage, speakText, interrupt, muteVoice, unmuteVoice, getIsVoiceMuted]);
 
   // Auto-start on mount if enabled
   useEffect(() => {

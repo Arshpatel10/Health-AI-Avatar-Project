@@ -30,22 +30,22 @@ function EvidenceItem({ source }: { source: EvidenceSource }) {
   const title = source.title || `Source: ${source.document_id}`;
 
   return (
-    <div className="border-l-2 border-white/30 pl-3">
+    <div className="border-l-2 border-black/20 pl-3">
       <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={() => setExpanded(!expanded)}
-          className="text-left text-sm font-medium text-white/90 hover:text-white focus:outline-none focus:underline"
+          className="text-left text-sm font-medium text-black/80 hover:text-black focus:outline-none focus:underline"
           aria-expanded={expanded}
         >
-          <span className="text-xs text-white/70">{expanded ? "▼" : "▶"}</span>
+          <span className="text-xs text-black/60">{expanded ? "▼" : "▶"}</span>
         </button>
         {source.url ? (
           <a
             href={source.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-sm font-medium text-white/90 hover:text-white hover:underline"
+            className="text-sm font-medium text-black hover:text-black/80 hover:underline"
           >
             {title}
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 inline-block ml-1">
@@ -53,11 +53,11 @@ function EvidenceItem({ source }: { source: EvidenceSource }) {
             </svg>
           </a>
         ) : (
-          <span className="text-sm font-medium text-white/90">{title}</span>
+          <span className="text-sm font-medium text-black">{title}</span>
         )}
       </div>
       {expanded && source.snippet && (
-        <p className="mt-1 text-xs text-white/80 italic ml-5">{source.snippet}</p>
+        <p className="mt-1 text-xs text-black/70 italic ml-5">{source.snippet}</p>
       )}
     </div>
   );
@@ -68,7 +68,7 @@ function EvidenceSection({ sources }: { sources: EvidenceSource[] }) {
 
   return (
     <div className="mt-3 border-t border-white/20 pt-3">
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-white/70">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-black/70">
         Sources
       </p>
       <div className="flex flex-col gap-2">

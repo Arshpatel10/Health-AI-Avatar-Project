@@ -17,6 +17,26 @@ interface MockEntry {
 
 const NORMAL_RESPONSES: MockEntry[] = [
   {
+    keywords: ["hello", "hi", "hey", "greetings", "good morning", "good afternoon", "good evening"],
+    response: {
+      answer:
+        "Hello! I'm your AI Health Assistant. I can help answer general health questions about topics like sleep, hydration, cholesterol, and more. How can I help you today?",
+      evidence_used: [],
+      guardrail_triggered: false,
+      emotion_state: "supportive",
+    },
+  },
+  {
+    keywords: ["thank", "thanks", "appreciate"],
+    response: {
+      answer:
+        "You're welcome! I'm happy to help. Is there anything else you'd like to know about your health?",
+      evidence_used: [],
+      guardrail_triggered: false,
+      emotion_state: "supportive",
+    },
+  },
+  {
     keywords: ["cholesterol", "ldl", "fiber"],
     response: {
       answer:

@@ -7,10 +7,20 @@ interface MessageInputProps {
   disabled?: boolean;
   onTypingChange?: (isTyping: boolean) => void;
   placeholder?: string;
+  onMicToggle?: (isMuted: boolean) => void;
+  isMicAvailable?: boolean;
 }
 
-export default function MessageInput({ onSend, disabled = false, onTypingChange, placeholder = "Describe your symptoms..." }: MessageInputProps) {
+export default function MessageInput({
+  onSend,
+  disabled = false,
+  onTypingChange,
+  placeholder = "Describe your symptoms...",
+  onMicToggle,
+  isMicAvailable = false,
+}: MessageInputProps) {
   const [text, setText] = useState("");
+  const [isMicMuted, setIsMicMuted] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newText = e.target.value;
@@ -32,6 +42,12 @@ export default function MessageInput({ onSend, disabled = false, onTypingChange,
       e.preventDefault();
       handleSubmit();
     }
+  };
+
+  const toggleMic = () => {
+    const newMutedState = !isMicMuted;
+    setIsMicMuted(newMutedState);
+    onMicToggle?.(newMutedState);
   };
 
   return (
@@ -59,12 +75,29 @@ export default function MessageInput({ onSend, disabled = false, onTypingChange,
 
       <button
         type="button"
-        className="p-2 hover:bg-surface-variant rounded-lg transition-all text-primary"
-        title="Voice Input"
+        onClick={toggleMic}
+        disabled={!isMicAvailable}
+        className={`p-2 rounded-lg transition-all ${
+          !isMicAvailable
+            ? "opacity-50 cursor-not-allowed text-gray-400"
+            : isMicMuted
+            ? "bg-red-100 text-red-600 hover:bg-red-200"
+            : "bg-green-100 text-green-600 hover:bg-green-200"
+        }`}
+        title={!isMicAvailable ? "Voice not available" : isMicMuted ? "Voice muted - click to unmute" : "Voice active - click to mute"}
       >
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
-        </svg>
+        {isMicMuted ? (
+          // Muted mic icon (with slash)
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 19L5 5m14 0v6a7 7 0 01-11.17 5.59M12 19v3m-4 0h8M5 10v1a7 7 0 001.17 3.88" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 9.34V4a3 3 0 00-5.68-1.33" />
+          </svg>
+        ) : (
+          // Active mic icon
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+          </svg>
+        )}
       </button>
 
       <button
