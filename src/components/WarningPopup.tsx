@@ -53,19 +53,13 @@ export default function WarningPopup({ message, onClose }: WarningPopupProps) {
         </div>
 
         {/* Actions */}
-        <div className="px-6 pb-6 flex gap-3">
+        <div className="px-6 pb-6">
           <button
             onClick={onClose}
-            className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-colors"
+            className="w-full px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-colors"
           >
             I Understand
           </button>
-          <a
-            href="tel:911"
-            className="flex-1 px-4 py-3 bg-red-500 hover:bg-red-600 text-white font-medium rounded-xl transition-colors text-center"
-          >
-            Call 911
-          </a>
         </div>
       </div>
     </div>

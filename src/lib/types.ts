@@ -1,4 +1,4 @@
-export type EmotionState = "neutral" | "supportive" | "warning";
+export type EmotionState = "neutral" | "supportive" | "warning" | "confused";
 
 export interface EvidenceSource {
   document_id: string;
