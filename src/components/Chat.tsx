@@ -5,31 +5,28 @@ import { ChatMessage, EmotionState } from "@/lib/types";
 import { getCoachResponse } from "@/lib/mockBackend";
 import MessageInput from "./MessageInput";
 import MessageBubble from "./MessageBubble";
-import LiveAvatar, { LiveAvatarState, LiveAvatarHandle } from "./LiveAvatar";
+import AudioWaveAvatar, { AvatarState, AudioWaveAvatarHandle } from "./AudioWaveAvatar";
 import WarningPopup from "./WarningPopup";
 
 // Combined display state for the avatar
-type DisplayState = "idle" | "listening" | "thinking" | "speaking" | "supportive" | "warning" | "confused" | "disconnected" | "connecting" | "error";
+type DisplayState = "idle" | "listening" | "thinking" | "speaking" | "supportive" | "warning" | "confused" | "error";
 
 export default function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [avatarState, setAvatarState] = useState<LiveAvatarState>("disconnected");
+  const [avatarState, setAvatarState] = useState<AvatarState>("idle");
   const [showWarning, setShowWarning] = useState(false);
   const [warningMessage, setWarningMessage] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isWarningActive, setIsWarningActive] = useState(false); // Persistent warning state
-  const [isTyping, setIsTyping] = useState(false); // Track when user is typing
-  const [emotionState, setEmotionState] = useState<EmotionState | null>(null); // Track response emotion
+  const [isWarningActive, setIsWarningActive] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const [emotionState, setEmotionState] = useState<EmotionState | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const [showDisclaimer, setShowDisclaimer] = useState(true);
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const avatarRef = useRef<LiveAvatarHandle>(null);
-  const pendingTextResponseRef = useRef<string | null>(null); // Track text-initiated responses
+  const avatarRef = useRef<AudioWaveAvatarHandle>(null);
 
   // Compute the current display state based on all factors
   const getDisplayState = useCallback((): DisplayState => {
-    // Priority order: disconnected/connecting/error > warning > thinking > listening > speaking > emotion states > idle
-    if (avatarState === "disconnected") return "disconnected";
-    if (avatarState === "connecting") return "connecting";
-    if (avatarState === "error") return "error";
     if (isWarningActive) return "warning";
     if (isProcessing) return "thinking";
     if (isTyping || avatarState === "listening") return "listening";
@@ -41,129 +38,155 @@ export default function Chat() {
 
   const displayState = getDisplayState();
 
+  // Compute avatar visual state (maps displayState to AvatarState)
+  const getAvatarVisualState = useCallback((): AvatarState => {
+    if (isWarningActive) return "warning";
+    if (isProcessing) return "thinking";
+    if (isTyping || avatarState === "listening") return "listening";
+    if (avatarState === "speaking") return "speaking";
+    return "idle";
+  }, [avatarState, isWarningActive, isProcessing, isTyping]);
+
+  const avatarVisualState = getAvatarVisualState();
+
   // Scroll to bottom when messages change
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Handle user transcription from voice - route through mock backend
-  const handleUserTranscription = useCallback(async (text: string) => {
-    setIsWarningActive(false); // Clear warning state on new voice input
-    setEmotionState(null); // Clear emotion state on new input
+  // Handle transcription from speech recognition
+  const handleTranscription = useCallback(async (text: string) => {
+    if (!text.trim()) return;
 
-    // Add user message to chat
-    const userMessage: ChatMessage = { role: "user", text };
-    setMessages((prev) => [...prev, userMessage]);
-
-    // Interrupt any HeyGen AI response that might be starting
-    if (avatarRef.current) {
-      avatarRef.current.interrupt();
-    }
-
-    setIsProcessing(true);
-
-    try {
-      // Get response from mock backend instead of HeyGen's AI
-      const response = await getCoachResponse(text);
-
-      // Check for warning
-      if (response.guardrail_triggered) {
-        setWarningMessage(response.answer);
-        setShowWarning(true);
-        setIsWarningActive(true);
-      }
-
-      // Set emotion state based on response
-      setEmotionState(response.emotion_state);
-
-      // Add assistant message to chat
-      const assistantMessage: ChatMessage = { role: "assistant", response };
-      setMessages((prev) => [...prev, assistantMessage]);
-
-      // Have the avatar speak the response from our backend
-      if (avatarRef.current) {
-        pendingTextResponseRef.current = response.answer; // Mark to avoid duplicate in transcription
-        avatarRef.current.speakText(response.answer);
-      }
-    } catch (error) {
-      console.error("Error getting response:", error);
-    } finally {
-      setIsProcessing(false);
-    }
-  }, []);
-
-  // Handle avatar transcription (what the avatar says)
-  // We now route all responses through our mock backend, so we only use this
-  // to clear the pending response marker (avoid duplicate messages)
-  const handleAvatarTranscription = useCallback((text: string) => {
-    // If this is a response we initiated (from our backend), just clear the marker
-    if (pendingTextResponseRef.current) {
-      const pending = pendingTextResponseRef.current.toLowerCase().substring(0, 50);
-      const transcribed = text.toLowerCase().substring(0, 50);
-      if (pending === transcribed || text.includes(pendingTextResponseRef.current.substring(0, 30))) {
-        pendingTextResponseRef.current = null;
-        return; // Already added to chat when we got backend response
-      }
-    }
-
-    // Ignore any other avatar speech (HeyGen's AI responses that slipped through)
-    // All responses should come from our mock backend
-    console.log("Ignoring HeyGen AI response:", text.substring(0, 50) + "...");
-  }, []);
-
-  // Handle avatar state changes
-  const handleStateChange = useCallback((state: LiveAvatarState) => {
-    setAvatarState(state);
-    setIsProcessing(state === "listening");
-  }, []);
-
-  // Handle errors
-  const handleError = useCallback((error: string) => {
-    console.error("LiveAvatar error:", error);
-  }, []);
-
-  // For text input - calls mock backend and has avatar speak the response
-  const handleSend = async (text: string) => {
-    if (!text.trim() || isProcessing) return;
-
-    // Clear states on new text input
     setIsWarningActive(false);
     setEmotionState(null);
 
+    // Stop listening while processing
+    if (avatarRef.current) {
+      avatarRef.current.stopListening();
+    }
+    setIsListening(false);
+
     // Add user message to chat
     const userMessage: ChatMessage = { role: "user", text };
     setMessages((prev) => [...prev, userMessage]);
+
     setIsProcessing(true);
+    setAvatarState("thinking");
 
     try {
-      // Get response from mock backend
       const response = await getCoachResponse(text);
 
-      // Check for warning
       if (response.guardrail_triggered) {
         setWarningMessage(response.answer);
         setShowWarning(true);
         setIsWarningActive(true);
+        setAvatarState("warning");
       }
 
-      // Set emotion state based on response
       setEmotionState(response.emotion_state);
 
-      // Add assistant message to chat
       const assistantMessage: ChatMessage = { role: "assistant", response };
       setMessages((prev) => [...prev, assistantMessage]);
 
       // Have the avatar speak the response
-      if (avatarRef.current && (avatarState === "connected" || avatarState === "listening" || avatarState === "speaking")) {
-        pendingTextResponseRef.current = response.answer; // Mark as text-initiated to avoid duplicate
-        avatarRef.current.speakText(response.answer);
+      if (avatarRef.current) {
+        avatarRef.current.speak(response.answer);
       }
     } catch (error) {
       console.error("Error getting response:", error);
+      setAvatarState("error");
+    } finally {
+      setIsProcessing(false);
+    }
+  }, []);
+
+  // Handle avatar state changes
+  const handleAvatarStateChange = useCallback((state: AvatarState) => {
+    // Don't let avatar override warning state
+    if (isWarningActive && state !== "warning") return;
+    setAvatarState(state);
+  }, [isWarningActive]);
+
+  // Handle speaking start - set to speaking unless warning is active
+  const handleSpeakingStart = useCallback(() => {
+    if (!isWarningActive) {
+      setAvatarState("speaking");
+    }
+    // If warning is active, keep the warning state
+  }, [isWarningActive]);
+
+  // Handle speaking end - reset state appropriately
+  const handleSpeakingEnd = useCallback(() => {
+    if (isWarningActive) {
+      setAvatarState("warning");
+    } else {
+      setAvatarState("idle");
+    }
+    // Restart listening if it was enabled
+    if (isListening) {
+      avatarRef.current?.startListening();
+    }
+  }, [isListening, isWarningActive]);
+
+  // For text input
+  const handleSend = async (text: string) => {
+    if (!text.trim() || isProcessing) return;
+
+    // Stop any ongoing speech
+    if (avatarRef.current) {
+      avatarRef.current.stopSpeaking();
+    }
+
+    setIsWarningActive(false);
+    setEmotionState(null);
+
+    const userMessage: ChatMessage = { role: "user", text };
+    setMessages((prev) => [...prev, userMessage]);
+    setIsProcessing(true);
+    setAvatarState("thinking");
+
+    try {
+      const response = await getCoachResponse(text);
+
+      if (response.guardrail_triggered) {
+        setWarningMessage(response.answer);
+        setShowWarning(true);
+        setIsWarningActive(true);
+        setAvatarState("warning");
+      }
+
+      setEmotionState(response.emotion_state);
+
+      const assistantMessage: ChatMessage = { role: "assistant", response };
+      setMessages((prev) => [...prev, assistantMessage]);
+
+      // Have the avatar speak the response
+      if (avatarRef.current) {
+        avatarRef.current.speak(response.answer);
+      }
+    } catch (error) {
+      console.error("Error getting response:", error);
+      setAvatarState("error");
     } finally {
       setIsProcessing(false);
     }
   };
+
+  // Toggle microphone listening
+  const handleMicToggle = useCallback((isMuted: boolean) => {
+    if (avatarRef.current) {
+      if (isMuted) {
+        avatarRef.current.stopListening();
+        setIsListening(false);
+        setAvatarState("idle");
+      } else {
+        avatarRef.current.startListening();
+        setIsListening(true);
+        setAvatarState("listening");
+      }
+    }
+  }, []);
 
   return (
     <div className="flex flex-col h-screen bg-background">
@@ -173,6 +196,56 @@ export default function Chat() {
           message={warningMessage}
           onClose={() => setShowWarning(false)}
         />
+      )}
+
+      {/* Medical Disclaimer Modal */}
+      {showDisclaimer && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-surface rounded-2xl shadow-2xl max-w-lg mx-4 overflow-hidden border border-outline-variant">
+            <div className="bg-primary px-6 py-4">
+              <div className="flex items-center gap-3">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-on-primary">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                </svg>
+                <h2 className="text-xl font-bold text-on-primary">Medical Disclaimer</h2>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-on-surface leading-relaxed">
+                Welcome to <span className="font-semibold text-primary">HealthAI</span>. Before you begin, please read and acknowledge the following:
+              </p>
+              <div className="bg-surface-variant rounded-xl p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <span className="text-primary font-bold">1.</span>
+                  <p className="text-on-surface-variant text-sm">This AI assistant provides <span className="font-medium">general health information only</span> and is intended for educational purposes.</p>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-primary font-bold">2.</span>
+                  <p className="text-on-surface-variant text-sm">This is <span className="font-medium">not a substitute</span> for professional medical advice, diagnosis, or treatment.</p>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-primary font-bold">3.</span>
+                  <p className="text-on-surface-variant text-sm">Always seek the advice of a <span className="font-medium">qualified healthcare provider</span> with any questions regarding a medical condition.</p>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-primary font-bold">4.</span>
+                  <p className="text-on-surface-variant text-sm">In case of a <span className="font-medium text-red-600">medical emergency</span>, call your local emergency services immediately.</p>
+                </div>
+              </div>
+              <p className="text-sm text-on-surface-variant text-center">
+                By continuing, you acknowledge that you have read and understood this disclaimer.
+              </p>
+            </div>
+            <div className="px-6 pb-6">
+              <button
+                onClick={() => setShowDisclaimer(false)}
+                className="w-full bg-primary text-on-primary py-3 px-6 rounded-xl font-semibold hover:opacity-90 transition-opacity"
+              >
+                I Understand, Continue
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Header */}
@@ -194,8 +267,6 @@ export default function Chat() {
               ? "bg-teal-100 text-teal-700"
               : displayState === "confused"
               ? "bg-orange-100 text-orange-700"
-              : displayState === "connecting"
-              ? "bg-yellow-100 text-yellow-700"
               : displayState === "idle"
               ? "bg-green-100 text-green-700"
               : "bg-gray-100 text-gray-700"
@@ -213,8 +284,6 @@ export default function Chat() {
                 ? "bg-teal-500"
                 : displayState === "confused"
                 ? "bg-orange-500"
-                : displayState === "connecting"
-                ? "bg-yellow-500 animate-pulse"
                 : displayState === "idle"
                 ? "bg-green-500"
                 : "bg-gray-400"
@@ -226,8 +295,6 @@ export default function Chat() {
             {displayState === "supportive" && "Supportive"}
             {displayState === "warning" && "Warning"}
             {displayState === "confused" && "Unsure"}
-            {displayState === "connecting" && "Connecting..."}
-            {displayState === "disconnected" && "Disconnected"}
             {displayState === "error" && "Error"}
           </div>
           <button className="p-2 rounded-full hover:bg-surface-variant transition-colors text-on-surface-variant">
@@ -247,18 +314,22 @@ export default function Chat() {
       {/* Main Content */}
       <main className="flex flex-1 overflow-hidden bg-background">
         {/* Avatar Section - Left Side */}
-        <section className="w-1/2 flex items-center justify-center border-r border-outline-variant bg-gradient-to-b from-surface to-surface-variant relative">
-          <LiveAvatar
+        <section className="w-1/2 flex flex-col items-center justify-center border-r border-outline-variant bg-gradient-to-b from-surface to-surface-variant relative">
+          <AudioWaveAvatar
             ref={avatarRef}
-            width={500}
-            height={600}
-            onStateChange={handleStateChange}
-            onUserTranscription={handleUserTranscription}
-            onAvatarTranscription={handleAvatarTranscription}
-            onError={handleError}
-            autoStart={true}
+            state={avatarVisualState}
+            onStateChange={handleAvatarStateChange}
+            onTranscription={handleTranscription}
+            onSpeakingStart={handleSpeakingStart}
+            onSpeakingEnd={handleSpeakingEnd}
+            size={350}
           />
-
+          {/* Persistent Disclaimer */}
+          <div className="absolute bottom-4 left-4 right-4 text-center">
+            <p className="text-xs text-on-surface-variant/70 leading-relaxed">
+              <span className="font-medium">Disclaimer:</span> This AI assistant provides general health information only and is not a substitute for professional medical advice, diagnosis, or treatment. Always consult a qualified healthcare provider for medical concerns.
+            </p>
+          </div>
         </section>
 
         {/* Chat Section - Right Side */}
@@ -278,7 +349,7 @@ export default function Chat() {
                 </div>
                 <div className="bg-primary-container text-on-primary-container p-4 rounded-2xl rounded-tl-none shadow-sm">
                   <p className="text-base leading-relaxed">
-                    Hello! I&apos;m your AI Health Assistant powered by LiveAvatar. You can speak to me directly - just start talking and I&apos;ll respond. Your conversation will appear here as a transcript.
+                    Hello! I&apos;m your AI Health Assistant. Click the microphone button to speak to me, or type your message below. I&apos;ll respond with voice and text.
                   </p>
                   <span className="text-xs mt-2 block opacity-80">Just now</span>
                 </div>
@@ -332,23 +403,15 @@ export default function Chat() {
             <div ref={chatEndRef} />
           </div>
 
-          {/* Input Box - for text fallback */}
+          {/* Input Box */}
           <div className="p-6 bg-background border-t border-outline-variant">
             <MessageInput
               onSend={handleSend}
               onTypingChange={setIsTyping}
-              disabled={isProcessing || (avatarState !== "connected" && avatarState !== "listening" && avatarState !== "speaking")}
-              placeholder={isProcessing ? "Processing..." : avatarState === "connected" ? "Type a message or speak to the avatar..." : "Waiting for avatar connection..."}
-              onMicToggle={(isMuted) => {
-                if (avatarRef.current) {
-                  if (isMuted) {
-                    avatarRef.current.muteVoice();
-                  } else {
-                    avatarRef.current.unmuteVoice();
-                  }
-                }
-              }}
-              isMicAvailable={avatarState === "connected" || avatarState === "listening" || avatarState === "speaking"}
+              disabled={isProcessing}
+              placeholder={isProcessing ? "Processing..." : "Type a message or click the mic to speak..."}
+              onMicToggle={handleMicToggle}
+              isMicAvailable={true}
             />
             <div className="flex items-center justify-center gap-2 mt-2">
               <span className={`w-2 h-2 rounded-full transition-colors ${
@@ -364,8 +427,6 @@ export default function Chat() {
                   ? "bg-teal-500"
                   : displayState === "confused"
                   ? "bg-orange-500"
-                  : displayState === "connecting"
-                  ? "bg-yellow-500 animate-pulse"
                   : displayState === "idle"
                   ? "bg-green-500"
                   : "bg-gray-400"
@@ -378,8 +439,6 @@ export default function Chat() {
                 {displayState === "supportive" && "Supportive"}
                 {displayState === "warning" && "Warning"}
                 {displayState === "confused" && "Unsure"}
-                {displayState === "connecting" && "Connecting..."}
-                {displayState === "disconnected" && "Disconnected"}
                 {displayState === "error" && "Error"}
               </p>
             </div>
