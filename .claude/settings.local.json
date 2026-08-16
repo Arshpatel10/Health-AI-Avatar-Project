@@ -3,7 +3,12 @@
     "allow": [
       "Bash(curl:*)",
       "Bash(python3:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(npm run build:*)",
+      "Bash(npx --yes gltf-transform inspect:*)",
+      "Bash(node:*)"
     ]
   }
 }
