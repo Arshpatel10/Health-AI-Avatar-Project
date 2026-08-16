@@ -5,23 +5,24 @@ import { ChatMessage, EmotionState } from "@/lib/types";
 import { getCoachResponse } from "@/lib/mockBackend";
 import MessageInput from "./MessageInput";
 import MessageBubble from "./MessageBubble";
-import LiveAvatar, { LiveAvatarState, LiveAvatarHandle } from "./LiveAvatar";
+import TalkingHeadAvatar, { AvatarState, TalkingHeadAvatarHandle } from "./TalkingHeadAvatar";
 import WarningPopup from "./WarningPopup";
 
 // Combined display state for the avatar
-type DisplayState = "idle" | "listening" | "thinking" | "speaking" | "supportive" | "warning" | "confused" | "disconnected" | "connecting" | "error";
+type DisplayState = "idle" | "listening" | "thinking" | "speaking" | "supportive" | "warning" | "insufficient" | "disconnected" | "connecting" | "error";
 
 export default function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [avatarState, setAvatarState] = useState<LiveAvatarState>("disconnected");
+  const [avatarState, setAvatarState] = useState<AvatarState>("disconnected");
   const [showWarning, setShowWarning] = useState(false);
   const [warningMessage, setWarningMessage] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [isWarningActive, setIsWarningActive] = useState(false); // Persistent warning state
   const [isTyping, setIsTyping] = useState(false); // Track when user is typing
   const [emotionState, setEmotionState] = useState<EmotionState | null>(null); // Track response emotion
+  const [isEvidenceSufficient, setIsEvidenceSufficient] = useState(true); // Track evidence sufficiency
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const avatarRef = useRef<LiveAvatarHandle>(null);
+  const avatarRef = useRef<TalkingHeadAvatarHandle>(null);
   const pendingTextResponseRef = useRef<string | null>(null); // Track text-initiated responses
 
   // Compute the current display state based on all factors
@@ -34,10 +35,10 @@ export default function Chat() {
     if (isProcessing) return "thinking";
     if (isTyping || avatarState === "listening") return "listening";
     if (avatarState === "speaking") return "speaking";
+    if (!isEvidenceSufficient) return "insufficient";
     if (emotionState === "supportive") return "supportive";
-    if (emotionState === "confused") return "confused";
     return "idle";
-  }, [avatarState, isWarningActive, isProcessing, isTyping, emotionState]);
+  }, [avatarState, isWarningActive, isProcessing, isTyping, emotionState, isEvidenceSufficient]);
 
   const displayState = getDisplayState();
 
@@ -50,6 +51,7 @@ export default function Chat() {
   const handleUserTranscription = useCallback(async (text: string) => {
     setIsWarningActive(false); // Clear warning state on new voice input
     setEmotionState(null); // Clear emotion state on new input
+    setIsEvidenceSufficient(true); // Reset evidence sufficiency
 
     // Add user message to chat
     const userMessage: ChatMessage = { role: "user", text };
@@ -73,8 +75,9 @@ export default function Chat() {
         setIsWarningActive(true);
       }
 
-      // Set emotion state based on response
+      // Set emotion state and evidence sufficiency based on response
       setEmotionState(response.emotion_state);
+      setIsEvidenceSufficient(response.evidence_sufficient);
 
       // Add assistant message to chat
       const assistantMessage: ChatMessage = { role: "assistant", response };
@@ -92,34 +95,14 @@ export default function Chat() {
     }
   }, []);
 
-  // Handle avatar transcription (what the avatar says)
-  // We now route all responses through our mock backend, so we only use this
-  // to clear the pending response marker (avoid duplicate messages)
-  const handleAvatarTranscription = useCallback((text: string) => {
-    // If this is a response we initiated (from our backend), just clear the marker
-    if (pendingTextResponseRef.current) {
-      const pending = pendingTextResponseRef.current.toLowerCase().substring(0, 50);
-      const transcribed = text.toLowerCase().substring(0, 50);
-      if (pending === transcribed || text.includes(pendingTextResponseRef.current.substring(0, 30))) {
-        pendingTextResponseRef.current = null;
-        return; // Already added to chat when we got backend response
-      }
-    }
-
-    // Ignore any other avatar speech (HeyGen's AI responses that slipped through)
-    // All responses should come from our mock backend
-    console.log("Ignoring HeyGen AI response:", text.substring(0, 50) + "...");
-  }, []);
-
   // Handle avatar state changes
-  const handleStateChange = useCallback((state: LiveAvatarState) => {
+  const handleStateChange = useCallback((state: AvatarState) => {
     setAvatarState(state);
-    setIsProcessing(state === "listening");
   }, []);
 
   // Handle errors
   const handleError = useCallback((error: string) => {
-    console.error("LiveAvatar error:", error);
+    console.error("TalkingHead error:", error);
   }, []);
 
   // For text input - calls mock backend and has avatar speak the response
@@ -129,6 +112,7 @@ export default function Chat() {
     // Clear states on new text input
     setIsWarningActive(false);
     setEmotionState(null);
+    setIsEvidenceSufficient(true);
 
     // Add user message to chat
     const userMessage: ChatMessage = { role: "user", text };
@@ -146,8 +130,9 @@ export default function Chat() {
         setIsWarningActive(true);
       }
 
-      // Set emotion state based on response
+      // Set emotion state and evidence sufficiency based on response
       setEmotionState(response.emotion_state);
+      setIsEvidenceSufficient(response.evidence_sufficient);
 
       // Add assistant message to chat
       const assistantMessage: ChatMessage = { role: "assistant", response };
@@ -192,7 +177,7 @@ export default function Chat() {
               ? "bg-purple-100 text-purple-700"
               : displayState === "supportive"
               ? "bg-teal-100 text-teal-700"
-              : displayState === "confused"
+              : displayState === "insufficient"
               ? "bg-orange-100 text-orange-700"
               : displayState === "connecting"
               ? "bg-yellow-100 text-yellow-700"
@@ -211,7 +196,7 @@ export default function Chat() {
                 ? "bg-purple-500 animate-pulse"
                 : displayState === "supportive"
                 ? "bg-teal-500"
-                : displayState === "confused"
+                : displayState === "insufficient"
                 ? "bg-orange-500"
                 : displayState === "connecting"
                 ? "bg-yellow-500 animate-pulse"
@@ -225,7 +210,7 @@ export default function Chat() {
             {displayState === "speaking" && "Speaking..."}
             {displayState === "supportive" && "Supportive"}
             {displayState === "warning" && "Warning"}
-            {displayState === "confused" && "Unsure"}
+            {displayState === "insufficient" && "Insufficient Evidence"}
             {displayState === "connecting" && "Connecting..."}
             {displayState === "disconnected" && "Disconnected"}
             {displayState === "error" && "Error"}
@@ -248,17 +233,15 @@ export default function Chat() {
       <main className="flex flex-1 overflow-hidden bg-background">
         {/* Avatar Section - Left Side */}
         <section className="w-1/2 flex items-center justify-center border-r border-outline-variant bg-gradient-to-b from-surface to-surface-variant relative">
-          <LiveAvatar
+          <TalkingHeadAvatar
             ref={avatarRef}
             width={500}
-            height={600}
+            height={400}
             onStateChange={handleStateChange}
             onUserTranscription={handleUserTranscription}
-            onAvatarTranscription={handleAvatarTranscription}
             onError={handleError}
             autoStart={true}
           />
-
         </section>
 
         {/* Chat Section - Right Side */}
@@ -278,7 +261,7 @@ export default function Chat() {
                 </div>
                 <div className="bg-primary-container text-on-primary-container p-4 rounded-2xl rounded-tl-none shadow-sm">
                   <p className="text-base leading-relaxed">
-                    Hello! I&apos;m your AI Health Assistant powered by LiveAvatar. You can speak to me directly - just start talking and I&apos;ll respond. Your conversation will appear here as a transcript.
+                    This health coach provides general educational information about adult health, including maternal health. It does not diagnose symptoms, provide individualized treatment recommendations, or advise on treatment or care for babies or children. Please do not use it for urgent or emergency concerns; contact your healthcare team or local emergency services when appropriate.
                   </p>
                   <span className="text-xs mt-2 block opacity-80">Just now</span>
                 </div>
@@ -362,7 +345,7 @@ export default function Chat() {
                   ? "bg-purple-500 animate-pulse"
                   : displayState === "supportive"
                   ? "bg-teal-500"
-                  : displayState === "confused"
+                  : displayState === "insufficient"
                   ? "bg-orange-500"
                   : displayState === "connecting"
                   ? "bg-yellow-500 animate-pulse"
@@ -377,7 +360,7 @@ export default function Chat() {
                 {displayState === "speaking" && "Speaking..."}
                 {displayState === "supportive" && "Supportive"}
                 {displayState === "warning" && "Warning"}
-                {displayState === "confused" && "Unsure"}
+                {displayState === "insufficient" && "Insufficient Evidence"}
                 {displayState === "connecting" && "Connecting..."}
                 {displayState === "disconnected" && "Disconnected"}
                 {displayState === "error" && "Error"}
