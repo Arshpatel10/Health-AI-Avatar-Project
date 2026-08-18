@@ -21,9 +21,16 @@ export default function Chat() {
   const [isTyping, setIsTyping] = useState(false); // Track when user is typing
   const [emotionState, setEmotionState] = useState<EmotionState | null>(null); // Track response emotion
   const [isEvidenceSufficient, setIsEvidenceSufficient] = useState(true); // Track evidence sufficiency
+  const [speechSpeed, setSpeechSpeed] = useState(1.0); // Speech speed (0.25 - 4.0)
+  const [showVoiceSettings, setShowVoiceSettings] = useState(false); // Toggle voice settings panel
   const chatEndRef = useRef<HTMLDivElement>(null);
   const avatarRef = useRef<TalkingHeadAvatarHandle>(null);
+  const voiceSettingsRef = useRef<HTMLDivElement>(null);
   const pendingTextResponseRef = useRef<string | null>(null); // Track text-initiated responses
+  const hasSpokenIntroRef = useRef(false); // Track if intro message has been spoken
+
+  // Initial greeting message
+  const INTRO_MESSAGE = "Hello! This health coach provides general educational information about adult health, including maternal health. It does not diagnose symptoms, provide individualized treatment recommendations, or advise on treatment or care for babies or children. Please do not use it for urgent or emergency concerns; contact your healthcare team or local emergency services when appropriate.";
 
   // Compute the current display state based on all factors
   const getDisplayState = useCallback((): DisplayState => {
@@ -46,6 +53,39 @@ export default function Chat() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Speak intro message when avatar connects
+  useEffect(() => {
+    if (avatarState === "connected" && !hasSpokenIntroRef.current && avatarRef.current) {
+      hasSpokenIntroRef.current = true;
+      // Small delay to ensure avatar is fully ready
+      setTimeout(() => {
+        avatarRef.current?.speakText(INTRO_MESSAGE);
+      }, 200);
+    }
+  }, [avatarState]);
+
+  // Close voice settings when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (voiceSettingsRef.current && !voiceSettingsRef.current.contains(event.target as Node)) {
+        setShowVoiceSettings(false);
+      }
+    };
+
+    if (showVoiceSettings) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showVoiceSettings]);
+
+  // Reset intro flag only on manual disconnect (red button), not avatar switch
+  const handleManualDisconnect = useCallback(() => {
+    hasSpokenIntroRef.current = false;
+  }, []);
 
   // Handle user transcription from voice - route through mock backend
   const handleUserTranscription = useCallback(async (text: string) => {
@@ -240,7 +280,9 @@ export default function Chat() {
             onStateChange={handleStateChange}
             onUserTranscription={handleUserTranscription}
             onError={handleError}
+            onManualDisconnect={handleManualDisconnect}
             autoStart={true}
+            speechSpeed={speechSpeed}
           />
         </section>
 
@@ -261,7 +303,7 @@ export default function Chat() {
                 </div>
                 <div className="bg-primary-container text-on-primary-container p-4 rounded-2xl rounded-tl-none shadow-sm">
                   <p className="text-base leading-relaxed">
-                    This health coach provides general educational information about adult health, including maternal health. It does not diagnose symptoms, provide individualized treatment recommendations, or advise on treatment or care for babies or children. Please do not use it for urgent or emergency concerns; contact your healthcare team or local emergency services when appropriate.
+                    {INTRO_MESSAGE}
                   </p>
                   <span className="text-xs mt-2 block opacity-80">Just now</span>
                 </div>
@@ -369,6 +411,58 @@ export default function Chat() {
           </div>
         </section>
       </main>
+
+      {/* Voice Settings Panel - Bottom Left Corner */}
+      <div className="fixed bottom-4 left-4 z-50" ref={voiceSettingsRef}>
+        {/* Toggle Button */}
+        <button
+          onClick={() => setShowVoiceSettings(!showVoiceSettings)}
+          className="p-3 bg-surface border border-outline-variant rounded-full shadow-lg hover:bg-surface-variant transition-colors"
+          title="Voice Settings"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-on-surface">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
+          </svg>
+        </button>
+
+        {/* Settings Panel */}
+        {showVoiceSettings && (
+          <div className="absolute bottom-14 left-0 bg-surface border border-outline-variant rounded-xl shadow-xl p-4 min-w-[240px]">
+            <h3 className="text-sm font-semibold text-on-surface mb-4">Voice Settings</h3>
+
+            {/* Speech Speed */}
+            <div className="mb-2">
+              <div className="flex justify-between items-center mb-2">
+                <label className="text-xs text-on-surface-variant">Speed</label>
+                <span className="text-xs font-medium text-on-surface">{speechSpeed.toFixed(1)}x</span>
+              </div>
+              <input
+                type="range"
+                min="0.5"
+                max="2.0"
+                step="0.1"
+                value={speechSpeed}
+                onChange={(e) => setSpeechSpeed(parseFloat(e.target.value))}
+                className="w-full h-2 bg-surface-variant rounded-lg appearance-none cursor-pointer accent-primary"
+              />
+              <div className="flex justify-between text-xs text-on-surface-variant mt-1">
+                <span>Slow</span>
+                <span>Fast</span>
+              </div>
+            </div>
+
+            {/* Reset Button */}
+            <button
+              onClick={() => {
+                setSpeechSpeed(1.0);
+              }}
+              className="w-full mt-2 px-3 py-1.5 text-xs text-primary hover:bg-primary-container rounded-lg transition-colors"
+            >
+              Reset to Default
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

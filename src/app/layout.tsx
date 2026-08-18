@@ -25,19 +25,19 @@ export default function RootLayout({
         <link rel="preload" href="/avatar.glb" as="fetch" crossOrigin="anonymous" />
         <link rel="preload" href="/avatar-male.glb" as="fetch" crossOrigin="anonymous" />
 
-        {/* Preload TalkingHead dependencies */}
-        <link rel="preload" href="https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js" as="script" crossOrigin="anonymous" />
-        <link rel="preload" href="https://cdn.jsdelivr.net/gh/met4citizen/TalkingHead@main/modules/talkinghead.mjs" as="script" crossOrigin="anonymous" />
+        {/* Preload libraries - Three.js and TalkingHead self-hosted, HeadTTS on CDN */}
+        <link rel="preload" href="/lib/three.module.js" as="script" crossOrigin="anonymous" />
+        <link rel="preload" href="/lib/talkinghead.mjs" as="script" crossOrigin="anonymous" />
         <link rel="preload" href="https://cdn.jsdelivr.net/npm/@met4citizen/headtts@1.3/+esm" as="script" crossOrigin="anonymous" />
 
-        {/* Import map for TalkingHead's Three.js dependency */}
+        {/* Import map for Three.js - using self-hosted files */}
         <script
           type="importmap"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify({
               imports: {
-                "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
-                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+                "three": "/lib/three.module.js",
+                "three/addons/": "/lib/three-addons/"
               }
             })
           }}
@@ -49,18 +49,22 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `
               // Preload libraries in the background as soon as page loads
+              // TalkingHead is self-hosted, HeadTTS stays on CDN (has complex AI dependencies)
               (async () => {
                 try {
-                  const [{ TalkingHead }, { HeadTTS }] = await Promise.all([
-                    import("https://cdn.jsdelivr.net/gh/met4citizen/TalkingHead@main/modules/talkinghead.mjs"),
+                  console.log('[Preload] Starting to load libraries...');
+                  const [talkingHeadModule, headTTSModule] = await Promise.all([
+                    import("/lib/talkinghead.mjs"),
                     import("https://cdn.jsdelivr.net/npm/@met4citizen/headtts@1.3/+esm")
                   ]);
-                  window.TalkingHead = TalkingHead;
-                  window.HeadTTS = HeadTTS;
+                  console.log('[Preload] Modules loaded');
+                  window.TalkingHead = talkingHeadModule.TalkingHead;
+                  window.HeadTTS = headTTSModule.HeadTTS;
                   window.dispatchEvent(new Event('talkinghead-loaded'));
-                  console.log('[Preload] TalkingHead and HeadTTS libraries loaded');
+                  console.log('[Preload] TalkingHead (self-hosted) and HeadTTS (CDN) libraries loaded');
                 } catch (e) {
-                  console.warn('[Preload] Failed to preload libraries:', e);
+                  console.error('[Preload] Failed to preload libraries:', e);
+                  console.error('[Preload] Error stack:', e.stack);
                 }
               })();
             `

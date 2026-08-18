@@ -26,7 +26,7 @@ const NORMAL_RESPONSES: MockEntry[] = [
     keywords: ["hello", "hi", "hey", "greetings", "good morning", "good afternoon", "good evening"],
     response: {
       answer:
-        "Hello! I'm your AI Health Assistant. I can help answer general health questions about topics like sleep, hydration, cholesterol, and more. How can I help you today?",
+        "Hello! This health coach provides general educational information about adult health, including maternal health. It does not diagnose symptoms, provide individualized treatment recommendations, or advise on treatment or care for babies or children. Please do not use it for urgent or emergency concerns; contact your healthcare team or local emergency services when appropriate.",
       evidence_used: [],
       evidence_sufficient: true,
       sufficiency_reason: "sufficient",
@@ -87,7 +87,7 @@ const NORMAL_RESPONSES: MockEntry[] = [
     keywords: ["hfpef", "heart failure preserved", "preserved ejection"],
     response: {
       answer:
-        "HFpEF is a type of heart failure in which the heart's pumping measurement is preserved, but the heart still has difficulty filling or working normally [lit_doc_119/chunk_2ba4a2ddc33d].",
+        "HFpEF is a type of heart failure in which the heart's pumping measurement is preserved, but the heart still has difficulty filling or working normally.",
       evidence_used: [
         { document_id: "lit_doc_119", chunk_id: "chunk_2ba4a2ddc33d", similarity_score: 0.82 },
       ],
