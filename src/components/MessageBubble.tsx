@@ -25,16 +25,43 @@ function WarningIcon() {
 }
 
 function EvidenceItemDisplay({ source }: { source: EvidenceItem }) {
+  const title = source.title || `${source.document_id}/${source.chunk_id}`;
+  const section = source.section &&
+    source.section.length <= 120 &&
+    !source.section.includes("@") &&
+    !source.section.toLowerCase().includes("correspondence to")
+      ? source.section
+      : null;
+  const pages = source.page_start
+    ? source.page_end && source.page_end !== source.page_start
+      ? `pp. ${source.page_start}-${source.page_end}`
+      : `p. ${source.page_start}`
+    : null;
+
   return (
     <div className="border-l-2 border-black/20 pl-3">
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-medium text-black">
-          {source.document_id}/{source.chunk_id}
-        </span>
+      <div className="flex items-start justify-between gap-2">
+        {source.doi ? (
+          <a
+            href={`https://doi.org/${source.doi}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm font-medium text-black hover:underline"
+          >
+            {title}
+          </a>
+        ) : (
+          <span className="text-sm font-medium text-black">{title}</span>
+        )}
         <span className="text-xs text-black/60">
           (score: {source.similarity_score.toFixed(2)})
         </span>
       </div>
+      <p className="mt-1 text-xs text-black/60">
+        {[`${source.document_id}/${source.chunk_id}`, section, pages]
+          .filter(Boolean)
+          .join(" · ")}
+      </p>
     </div>
   );
 }

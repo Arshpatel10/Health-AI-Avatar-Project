@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { ChatMessage, EmotionState } from "@/lib/types";
-import { getCoachResponse } from "@/lib/mockBackend";
+import { backendErrorResponse, getCoachResponse } from "@/lib/ragBackend";
 import MessageInput from "./MessageInput";
 import MessageBubble from "./MessageBubble";
 import TalkingHeadAvatar, { AvatarState, TalkingHeadAvatarHandle } from "./TalkingHeadAvatar";
@@ -34,13 +34,14 @@ export default function Chat() {
 
   // Compute the current display state based on all factors
   const getDisplayState = useCallback((): DisplayState => {
-    // Priority order: disconnected/connecting/error > warning > thinking > listening > speaking > emotion states > idle
-    if (avatarState === "disconnected") return "disconnected";
-    if (avatarState === "connecting") return "connecting";
-    if (avatarState === "error") return "error";
+    // Text requests remain visible while the avatar is still loading.
     if (isWarningActive) return "warning";
     if (isProcessing) return "thinking";
-    if (isTyping || avatarState === "listening") return "listening";
+    if (isTyping) return "listening";
+    if (avatarState === "connecting") return "connecting";
+    if (avatarState === "error") return "error";
+    if (avatarState === "disconnected") return "disconnected";
+    if (avatarState === "listening") return "listening";
     if (avatarState === "speaking") return "speaking";
     if (!isEvidenceSufficient) return "insufficient";
     if (emotionState === "supportive") return "supportive";
@@ -51,7 +52,9 @@ export default function Chat() {
 
   // Scroll to bottom when messages change
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messages.length > 0) {
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
   // Speak intro message when avatar connects
@@ -87,7 +90,7 @@ export default function Chat() {
     hasSpokenIntroRef.current = false;
   }, []);
 
-  // Handle user transcription from voice - route through mock backend
+  // Handle user transcription through the document-grounded backend.
   const handleUserTranscription = useCallback(async (text: string) => {
     setIsWarningActive(false); // Clear warning state on new voice input
     setEmotionState(null); // Clear emotion state on new input
@@ -105,7 +108,6 @@ export default function Chat() {
     setIsProcessing(true);
 
     try {
-      // Get response from mock backend instead of HeyGen's AI
       const response = await getCoachResponse(text);
 
       // Check for warning
@@ -130,6 +132,9 @@ export default function Chat() {
       }
     } catch (error) {
       console.error("Error getting response:", error);
+      const response = backendErrorResponse(error);
+      setIsEvidenceSufficient(false);
+      setMessages((prev) => [...prev, { role: "assistant", response }]);
     } finally {
       setIsProcessing(false);
     }
@@ -145,7 +150,7 @@ export default function Chat() {
     console.error("TalkingHead error:", error);
   }, []);
 
-  // For text input - calls mock backend and has avatar speak the response
+  // Text input uses the RAG backend and asks the avatar to speak when connected.
   const handleSend = async (text: string) => {
     if (!text.trim() || isProcessing) return;
 
@@ -160,7 +165,6 @@ export default function Chat() {
     setIsProcessing(true);
 
     try {
-      // Get response from mock backend
       const response = await getCoachResponse(text);
 
       // Check for warning
@@ -185,6 +189,9 @@ export default function Chat() {
       }
     } catch (error) {
       console.error("Error getting response:", error);
+      const response = backendErrorResponse(error);
+      setIsEvidenceSufficient(false);
+      setMessages((prev) => [...prev, { role: "assistant", response }]);
     } finally {
       setIsProcessing(false);
     }
@@ -246,7 +253,7 @@ export default function Chat() {
             }`} />
             {displayState === "idle" && "Ready"}
             {displayState === "listening" && "Listening..."}
-            {displayState === "thinking" && "Thinking..."}
+            {displayState === "thinking" && "Checking evidence..."}
             {displayState === "speaking" && "Speaking..."}
             {displayState === "supportive" && "Supportive"}
             {displayState === "warning" && "Warning"}
@@ -270,9 +277,9 @@ export default function Chat() {
       </header>
 
       {/* Main Content */}
-      <main className="flex flex-1 overflow-hidden bg-background">
+      <main className="flex flex-1 flex-col overflow-y-auto bg-background lg:flex-row lg:overflow-hidden">
         {/* Avatar Section - Left Side */}
-        <section className="w-1/2 flex items-center justify-center border-r border-outline-variant bg-gradient-to-b from-surface to-surface-variant relative">
+        <section className="relative flex w-full shrink-0 items-center justify-center border-b border-outline-variant bg-gradient-to-b from-surface to-surface-variant py-4 lg:w-1/2 lg:border-b-0 lg:border-r lg:py-0">
           <TalkingHeadAvatar
             ref={avatarRef}
             width={500}
@@ -287,7 +294,7 @@ export default function Chat() {
         </section>
 
         {/* Chat Section - Right Side */}
-        <section className="w-1/2 flex flex-col h-full">
+        <section className="flex min-h-[32rem] w-full flex-col lg:h-full lg:min-h-0 lg:w-1/2">
           {/* Chat Scrollable Area */}
           <div
             className="flex-1 overflow-y-auto chat-scroll p-6 space-y-8"
@@ -325,7 +332,7 @@ export default function Chat() {
                   </svg>
                 </div>
                 <div className="bg-yellow-100 text-yellow-800 px-5 py-3 rounded-2xl rounded-tl-none shadow-sm flex items-center gap-2">
-                  <span className="text-sm">Thinking...</span>
+                  <span className="text-sm">Checking evidence...</span>
                   <span className="flex gap-1">
                     <span className="w-1.5 h-1.5 bg-yellow-600 rounded-full animate-bounce" style={{ animationDelay: "0s" }}></span>
                     <span className="w-1.5 h-1.5 bg-yellow-600 rounded-full animate-bounce" style={{ animationDelay: "0.15s" }}></span>
@@ -358,12 +365,12 @@ export default function Chat() {
           </div>
 
           {/* Input Box - for text fallback */}
-          <div className="p-6 bg-background border-t border-outline-variant">
+          <div className="bg-background p-4 border-t border-outline-variant sm:p-6">
             <MessageInput
               onSend={handleSend}
               onTypingChange={setIsTyping}
-              disabled={isProcessing || (avatarState !== "connected" && avatarState !== "listening" && avatarState !== "speaking")}
-              placeholder={isProcessing ? "Processing..." : avatarState === "connected" ? "Type a message or speak to the avatar..." : "Waiting for avatar connection..."}
+              disabled={isProcessing}
+              placeholder={isProcessing ? "Checking the evidence..." : avatarState === "connected" ? "Type a message or speak to the avatar..." : "Ask a general HFpEF or CKM health question..."}
               onMicToggle={(isMuted) => {
                 if (avatarRef.current) {
                   if (isMuted) {
