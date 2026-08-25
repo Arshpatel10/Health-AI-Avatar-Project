@@ -8,7 +8,9 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(npm run build:*)",
       "Bash(npx --yes gltf-transform inspect:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(npx --yes @gltf-transform/cli inspect:*)",
+      "WebSearch"
     ]
   }
 }
