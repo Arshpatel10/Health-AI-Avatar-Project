@@ -384,6 +384,7 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
     const headRef = useRef<TalkingHeadInstance | null>(null);
     const headTTSRef = useRef<HeadTTSInstance | null>(null);
     const recognitionRef = useRef<SpeechRecognition | null>(null);
+    const speechRecognitionBlockedRef = useRef(false);
     const scriptLoadedRef = useRef(false);
     const speakResolveRef = useRef<(() => void) | null>(null);
     const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -554,6 +555,12 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
       };
 
       recognition.onerror = (event: Event & { error?: string }) => {
+        if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+          speechRecognitionBlockedRef.current = true;
+          console.warn("Speech recognition is unavailable because microphone access was denied.");
+          return;
+        }
+
         // Only log non-trivial errors (not "no-speech" or "aborted")
         if (event.error && event.error !== "no-speech" && event.error !== "aborted") {
           console.warn("Speech recognition error:", event.error);
@@ -561,6 +568,10 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
       };
 
       recognition.onend = () => {
+        if (speechRecognitionBlockedRef.current) {
+          return;
+        }
+
         // Don't restart if avatar is speaking - wait until speaking finishes
         if (isSpeakingRef.current) {
           console.log("[Speech] Recognition ended while avatar speaking, not restarting");
@@ -574,7 +585,7 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
           return;
         }
 
-        // Restart if not muted
+        // Restart if not muted.
         if (!isVoiceMutedRef.current && recognitionRef.current) {
           try {
             recognitionRef.current.start();
@@ -592,7 +603,7 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
       };
 
       return recognition;
-    }, [onUserTranscription, isVoiceMuted, state, isSpeaking, updateState]);
+    }, [onUserTranscription, updateState]);
 
     // Initialize the avatar
     const startSession = useCallback(async () => {
@@ -685,7 +696,12 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
                   // Clear the last spoken text after cooldown
                   lastSpokenTextRef.current = "";
 
-                  if (recognitionRef.current && !isVoiceMutedRef.current && !isSpeakingRef.current) {
+                  if (
+                    recognitionRef.current &&
+                    !speechRecognitionBlockedRef.current &&
+                    !isVoiceMutedRef.current &&
+                    !isSpeakingRef.current
+                  ) {
                     try {
                       recognitionRef.current.start();
                       console.log("[Speech] Recognition restarted after speaking cooldown");
@@ -746,7 +762,7 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
         const avatarBody = avatarTypeRef.current === "male" ? "M" : "F";
 
         // Baseline pose adjustments per avatar (headRotateX: negative = look up, positive = look down)
-        const avatarBaseline = isMale
+        const avatarBaseline: Record<string, number> = isMale
           ? { headRotateX: -0.15 }  // Male: tilt head up slightly
           : {};                      // Female: no adjustment
 
@@ -775,7 +791,12 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
           // Don't start immediately - will be started after first speakText completes
           // But if no speaking happens within 2 seconds (e.g., avatar switch), start recognition
           setTimeout(() => {
-            if (!hasEverSpokenRef.current && recognitionRef.current && !isVoiceMutedRef.current) {
+            if (
+              !hasEverSpokenRef.current &&
+              recognitionRef.current &&
+              !speechRecognitionBlockedRef.current &&
+              !isVoiceMutedRef.current
+            ) {
               try {
                 recognitionRef.current.start();
                 console.log("[Speech] Recognition started (no intro message)");
@@ -897,7 +918,12 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
           updateState("connected");
           // Try to resume recognition on error with delay
           setTimeout(() => {
-            if (recognitionRef.current && !isVoiceMutedRef.current && !isSpeakingRef.current) {
+            if (
+              recognitionRef.current &&
+              !speechRecognitionBlockedRef.current &&
+              !isVoiceMutedRef.current &&
+              !isSpeakingRef.current
+            ) {
               try {
                 recognitionRef.current.start();
               } catch (e) {
@@ -947,7 +973,11 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
     const unmuteVoice = useCallback(() => {
       setIsVoiceMuted(false);
       isVoiceMutedRef.current = false;
-      if (recognitionRef.current && state === "connected") {
+      if (
+        recognitionRef.current &&
+        !speechRecognitionBlockedRef.current &&
+        state === "connected"
+      ) {
         try {
           recognitionRef.current.start();
         } catch (e) {
@@ -1120,16 +1150,15 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
     };
 
     return (
-      <div className="flex flex-col items-center">
+      <div className="flex w-full flex-col items-center px-4">
         <div
-          className="relative rounded-lg overflow-hidden bg-gradient-to-b from-blue-100 to-blue-200"
-          style={{ width, height }}
+          className="relative w-full max-w-[500px] overflow-hidden rounded-lg bg-gradient-to-b from-blue-100 to-blue-200"
+          style={{ aspectRatio: `${width} / ${height}` }}
         >
           {/* TalkingHead container */}
           <div
             ref={containerRef}
-            className="w-full h-full"
-            style={{ width, height }}
+            className="h-full w-full"
           />
 
           {/* Loading/connecting overlay */}

@@ -14,9 +14,17 @@ export interface EvidenceItem {
   document_id: string;
   chunk_id: string;
   similarity_score: number;
+  title?: string;
+  section?: string;
+  page_start?: number;
+  page_end?: number;
+  doi?: string;
+  quoted_span?: string;
 }
 
 export interface CoachResponse {
+  request_id?: string;
+  answer_status?: "full" | "partial" | "refused" | "safety";
   answer: string;
   evidence_used: EvidenceItem[];
   evidence_sufficient: boolean;

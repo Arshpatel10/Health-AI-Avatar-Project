@@ -51,10 +51,10 @@ export default function MessageInput({
   };
 
   return (
-    <div className="flex items-center gap-3 bg-surface border border-outline-variant rounded-2xl px-3 py-2 focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all shadow-sm">
+    <div className="flex w-full min-w-0 items-center gap-1 bg-surface border border-outline-variant rounded-2xl px-2 py-2 focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all shadow-sm sm:gap-3 sm:px-3">
       <button
         type="button"
-        className="p-2 hover:bg-surface-variant rounded-lg transition-colors text-on-surface-variant"
+        className="shrink-0 p-2 hover:bg-surface-variant rounded-lg transition-colors text-on-surface-variant"
         title="Attach file"
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
@@ -70,14 +70,14 @@ export default function MessageInput({
         onKeyDown={handleKeyDown}
         disabled={disabled}
         placeholder={placeholder}
-        className="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none text-base text-on-surface py-2 placeholder:text-on-surface-variant"
+        className="min-w-0 flex-1 bg-transparent border-none focus:ring-0 focus:outline-none text-base text-on-surface py-2 placeholder:text-on-surface-variant"
       />
 
       <button
         type="button"
         onClick={toggleMic}
         disabled={!isMicAvailable}
-        className={`p-2 rounded-lg transition-all ${
+        className={`shrink-0 p-2 rounded-lg transition-all ${
           !isMicAvailable
             ? "opacity-50 cursor-not-allowed text-gray-400"
             : isMicMuted
@@ -104,7 +104,7 @@ export default function MessageInput({
         type="button"
         onClick={handleSubmit}
         disabled={disabled}
-        className="bg-primary text-on-primary p-2.5 rounded-xl flex items-center justify-center hover:opacity-90 transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex shrink-0 items-center justify-center rounded-xl bg-primary p-2.5 text-on-primary transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
           <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
