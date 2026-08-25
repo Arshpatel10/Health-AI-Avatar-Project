@@ -22,6 +22,183 @@ interface MockEntry {
 }
 
 const NORMAL_RESPONSES: MockEntry[] = [
+  // ==================== MOOD TEST RESPONSES ====================
+  // Available moods: neutral, happy, angry, sad, fear, disgust, love, sleep
+  // These switch mood silently (no speech) - mood persists until changed
+  {
+    keywords: ["neutral mood", "test neutral"],
+    response: {
+      answer: "[Switched to neutral mood]",
+      evidence_used: [],
+      evidence_sufficient: true,
+      sufficiency_reason: "sufficient",
+      guardrail_triggered: false,
+    },
+  },
+  {
+    keywords: ["happy mood", "test happy"],
+    response: {
+      answer: "[Switched to happy mood]",
+      evidence_used: [],
+      evidence_sufficient: true,
+      sufficiency_reason: "sufficient",
+      guardrail_triggered: false,
+    },
+  },
+  {
+    keywords: ["angry mood", "test angry"],
+    response: {
+      answer: "[Switched to angry mood]",
+      evidence_used: [],
+      evidence_sufficient: true,
+      sufficiency_reason: "sufficient",
+      guardrail_triggered: false,
+    },
+  },
+  {
+    keywords: ["sad mood", "test sad"],
+    response: {
+      answer: "[Switched to sad mood]",
+      evidence_used: [],
+      evidence_sufficient: true,
+      sufficiency_reason: "sufficient",
+      guardrail_triggered: false,
+    },
+  },
+  {
+    keywords: ["fear mood", "test fear"],
+    response: {
+      answer: "[Switched to fear mood]",
+      evidence_used: [],
+      evidence_sufficient: true,
+      sufficiency_reason: "sufficient",
+      guardrail_triggered: false,
+    },
+  },
+  {
+    keywords: ["disgust mood", "test disgust"],
+    response: {
+      answer: "[Switched to disgust mood]",
+      evidence_used: [],
+      evidence_sufficient: true,
+      sufficiency_reason: "sufficient",
+      guardrail_triggered: false,
+    },
+  },
+  {
+    keywords: ["love mood", "test love"],
+    response: {
+      answer: "[Switched to love mood]",
+      evidence_used: [],
+      evidence_sufficient: true,
+      sufficiency_reason: "sufficient",
+      guardrail_triggered: false,
+    },
+  },
+  {
+    keywords: ["sleep mood", "test sleep"],
+    response: {
+      answer: "[Switched to sleep mood]",
+      evidence_used: [],
+      evidence_sufficient: true,
+      sufficiency_reason: "sufficient",
+      guardrail_triggered: false,
+    },
+  },
+  // ==================== GESTURE TEST RESPONSES ====================
+  // Available gestures: shrug, point, handup, thumbsup, thumbsdown, ok, namaste, nod, no (shake)
+  // Gestures persist for 15 seconds after speech ends
+  {
+    keywords: ["shrug gesture", "test shrug"],
+    response: {
+      answer: "Showing shrug gesture.",
+      evidence_used: [],
+      evidence_sufficient: true,
+      sufficiency_reason: "sufficient",
+      guardrail_triggered: false,
+    },
+  },
+  {
+    keywords: ["point gesture", "test point"],
+    response: {
+      answer: "Showing point gesture.",
+      evidence_used: [],
+      evidence_sufficient: true,
+      sufficiency_reason: "sufficient",
+      guardrail_triggered: false,
+    },
+  },
+  {
+    keywords: ["handup gesture", "test handup", "hand up gesture"],
+    response: {
+      answer: "Showing handup gesture.",
+      evidence_used: [],
+      evidence_sufficient: true,
+      sufficiency_reason: "sufficient",
+      guardrail_triggered: false,
+    },
+  },
+  {
+    keywords: ["thumbsup gesture", "test thumbsup", "thumbs up gesture"],
+    response: {
+      answer: "Showing thumbsup gesture.",
+      evidence_used: [],
+      evidence_sufficient: true,
+      sufficiency_reason: "sufficient",
+      guardrail_triggered: false,
+    },
+  },
+  {
+    keywords: ["thumbsdown gesture", "test thumbsdown", "thumbs down gesture"],
+    response: {
+      answer: "Showing thumbsdown gesture.",
+      evidence_used: [],
+      evidence_sufficient: true,
+      sufficiency_reason: "sufficient",
+      guardrail_triggered: false,
+    },
+  },
+  {
+    keywords: ["ok gesture", "test ok"],
+    response: {
+      answer: "Showing ok gesture.",
+      evidence_used: [],
+      evidence_sufficient: true,
+      sufficiency_reason: "sufficient",
+      guardrail_triggered: false,
+    },
+  },
+  {
+    keywords: ["namaste gesture", "test namaste"],
+    response: {
+      answer: "Showing namaste gesture.",
+      evidence_used: [],
+      evidence_sufficient: true,
+      sufficiency_reason: "sufficient",
+      guardrail_triggered: false,
+    },
+  },
+  {
+    keywords: ["nod gesture", "test nod"],
+    response: {
+      answer: "Showing nod gesture.",
+      evidence_used: [],
+      evidence_sufficient: true,
+      sufficiency_reason: "sufficient",
+      guardrail_triggered: false,
+    },
+  },
+  {
+    keywords: ["no gesture", "test no", "shake gesture", "test shake"],
+    response: {
+      answer: "Showing no gesture.",
+      evidence_used: [],
+      evidence_sufficient: true,
+      sufficiency_reason: "sufficient",
+      guardrail_triggered: false,
+    },
+  },
+  // ==================== ORIGINAL RESPONSES ====================
   {
     keywords: ["hello", "hi", "hey", "greetings", "good morning", "good afternoon", "good evening"],
     response: {

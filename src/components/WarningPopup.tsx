@@ -7,15 +7,15 @@ interface WarningPopupProps {
 
 export default function WarningPopup({ message, onClose }: WarningPopupProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
+    <div className="fixed top-0 right-0 bottom-0 w-1/2 z-50 flex items-end justify-center">
+      {/* Backdrop - only covers chat section (right half) */}
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/30 backdrop-blur-sm"
         onClick={onClose}
       />
 
-      {/* Modal */}
-      <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden animate-in zoom-in-95 duration-200">
+      {/* Modal - centered horizontally in chat section, near message input */}
+      <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full mx-6 mb-32 overflow-hidden animate-in slide-in-from-bottom-4 duration-200">
         {/* Warning header */}
         <div className="bg-red-500 px-6 py-4 flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">

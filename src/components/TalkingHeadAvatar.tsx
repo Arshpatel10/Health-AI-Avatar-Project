@@ -129,15 +129,130 @@ interface TalkingHeadInstance {
 interface SemanticAnalysis {
   mood: string | null;
   gestures: Array<{ name: string; delay: number; duration?: number }>;
+  isTest: boolean;  // If true, don't reset mood/gesture after speaking
+  persistMood: boolean;  // If true, keep mood after speaking (for guardrails/emergencies)
 }
 
 // Semantic keyword mappings for gestures and moods
 const SEMANTIC_MAPPINGS = {
-  // Emergency/Warning keywords - trigger concerned mood
-  emergency: {
-    keywords: ["emergency", "911", "call emergency", "urgent", "immediately", "right away", "seek emergency", "medical emergency", "crisis"],
+  // ==================== TEST MOOD TRIGGERS ====================
+  // These trigger when the response contains "[Switched to X mood]"
+  // Available moods: neutral, happy, angry, sad, fear, disgust, love, sleep
+  // Mood tests are silent (no speech) - mood persists until changed
+  testNeutralMood: {
+    keywords: ["switched to neutral mood"],
+    mood: "neutral",
+    gestures: [],
+    isTest: true
+  },
+  testHappyMood: {
+    keywords: ["switched to happy mood"],
+    mood: "happy",
+    gestures: [],
+    isTest: true
+  },
+  testAngryMood: {
+    keywords: ["switched to angry mood"],
+    mood: "angry",
+    gestures: [],
+    isTest: true
+  },
+  testSadMood: {
+    keywords: ["switched to sad mood"],
+    mood: "sad",
+    gestures: [],
+    isTest: true
+  },
+  testFearMood: {
+    keywords: ["switched to fear mood"],
     mood: "fear",
-    gestures: [{ name: "handup", delay: 0, duration: 3 }]
+    gestures: [],
+    isTest: true
+  },
+  testDisgustMood: {
+    keywords: ["switched to disgust mood"],
+    mood: "disgust",
+    gestures: [],
+    isTest: true
+  },
+  testLoveMood: {
+    keywords: ["switched to love mood"],
+    mood: "love",
+    gestures: [],
+    isTest: true
+  },
+  testSleepMood: {
+    keywords: ["switched to sleep mood"],
+    mood: "sleep",
+    gestures: [],
+    isTest: true
+  },
+  // ==================== TEST GESTURE TRIGGERS ====================
+  // These trigger when the response contains "showing X gesture"
+  // Available gestures: handup, index (point), ok, thumbup, thumbdown, shrug, namaste, yes (nod), no (shake)
+  // Note: "yes" (nod) and "no" (shake) have been enhanced in talkinghead.mjs for visibility
+  // Test gestures use longer duration (15s) to be clearly visible
+  testNodGesture: {
+    keywords: ["showing nod gesture"],
+    mood: null,
+    gestures: [{ name: "yes", delay: 0, duration: 15 }],  // "yes" = head nod
+    isTest: true
+  },
+  testNoGesture: {
+    keywords: ["showing no gesture"],
+    mood: null,
+    gestures: [{ name: "no", delay: 0, duration: 15 }],  // "no" = head shake
+    isTest: true
+  },
+  testShrugGesture: {
+    keywords: ["showing shrug gesture"],
+    mood: null,
+    gestures: [{ name: "shrug", delay: 0, duration: 15 }],
+    isTest: true
+  },
+  testPointGesture: {
+    keywords: ["showing point gesture"],
+    mood: null,
+    gestures: [{ name: "index", delay: 0, duration: 15 }],  // "index" = pointing finger
+    isTest: true
+  },
+  testHandupGesture: {
+    keywords: ["showing handup gesture"],
+    mood: null,
+    gestures: [{ name: "handup", delay: 0, duration: 15 }],
+    isTest: true
+  },
+  testThumbsupGesture: {
+    keywords: ["showing thumbsup gesture"],
+    mood: null,
+    gestures: [{ name: "thumbup", delay: 0, duration: 15 }],  // "thumbup" not "thumbsup"
+    isTest: true
+  },
+  testThumbsdownGesture: {
+    keywords: ["showing thumbsdown gesture"],
+    mood: null,
+    gestures: [{ name: "thumbdown", delay: 0, duration: 15 }],  // "thumbdown" not "thumbsdown"
+    isTest: true
+  },
+  testOkGesture: {
+    keywords: ["showing ok gesture"],
+    mood: null,
+    gestures: [{ name: "ok", delay: 0, duration: 15 }],
+    isTest: true
+  },
+  testNamasteGesture: {
+    keywords: ["showing namaste gesture"],
+    mood: null,
+    gestures: [{ name: "namaste", delay: 0, duration: 15 }],
+    isTest: true
+  },
+  // ==================== ORIGINAL SEMANTIC MAPPINGS ====================
+  // Emergency/Warning keywords - trigger fear mood that persists until next message
+  emergency: {
+    keywords: ["emergency", "911", "call emergency", "urgent", "immediately", "right away", "seek emergency", "medical emergency", "crisis", "crisis line", "988"],
+    mood: "fear",
+    gestures: [],
+    persistMood: true  // Keep fear mood after speaking (guardrail responses)
   },
   warning: {
     keywords: ["warning", "caution", "careful", "danger", "risk", "serious", "critical"],
@@ -170,7 +285,7 @@ const SEMANTIC_MAPPINGS = {
   },
   // Emphasis/Important - pointing
   emphasis: {
-    keywords: ["important", "remember", "note that", "keep in mind", "please", "must", "essential", "crucial", "key point"],
+    keywords: ["important", "remember", "note that", "keep in mind", "must", "essential", "crucial", "key point"],
     mood: null,
     gestures: [{ name: "index", delay: 0, duration: 2 }]
   },
@@ -196,15 +311,43 @@ function analyzeTextSemantics(text: string): SemanticAnalysis {
   let mood: string | null = null;
   const gestures: Array<{ name: string; delay: number; duration?: number }> = [];
   const usedGestures = new Set<string>();
+  let isTest = false;
+  let persistMood = false;
 
-  // Check each mapping category (priority order matters)
-  const categories = ["emergency", "warning", "negative", "positive", "greeting", "uncertainty", "emphasis", "supportive", "thinking"];
+  // Check each mapping category (priority order matters - test triggers first)
+  const categories = [
+    // Test mood triggers (available: neutral, happy, angry, sad, fear, disgust, love, sleep)
+    "testNeutralMood", "testHappyMood", "testAngryMood", "testSadMood", "testFearMood",
+    "testDisgustMood", "testLoveMood", "testSleepMood",
+    // Test gesture triggers (available: nod, no, shrug, point, handup, thumbsup, thumbsdown, ok, namaste)
+    "testNodGesture", "testNoGesture",
+    "testShrugGesture", "testPointGesture", "testHandupGesture",
+    "testThumbsupGesture", "testThumbsdownGesture", "testOkGesture", "testNamasteGesture",
+    // Original semantic mappings
+    "emergency", "warning", "negative", "positive", "greeting", "uncertainty", "emphasis", "supportive", "thinking"
+  ];
 
   for (const category of categories) {
-    const mapping = SEMANTIC_MAPPINGS[category as keyof typeof SEMANTIC_MAPPINGS];
+    const mapping = SEMANTIC_MAPPINGS[category as keyof typeof SEMANTIC_MAPPINGS] as {
+      keywords: string[];
+      mood: string | null;
+      gestures: Array<{ name: string; delay: number; duration?: number }>;
+      isTest?: boolean;
+      persistMood?: boolean;
+    };
     const hasMatch = mapping.keywords.some(keyword => lowerText.includes(keyword));
 
     if (hasMatch) {
+      // Check if this is a test trigger
+      if (mapping.isTest) {
+        isTest = true;
+      }
+
+      // Check if mood should persist after speaking (guardrails)
+      if (mapping.persistMood) {
+        persistMood = true;
+      }
+
       // Set mood (first match wins)
       if (!mood && mapping.mood) {
         mood = mapping.mood;
@@ -220,7 +363,7 @@ function analyzeTextSemantics(text: string): SemanticAnalysis {
     }
   }
 
-  return { mood, gestures };
+  return { mood, gestures, isTest, persistMood };
 }
 
 const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarProps>(
@@ -247,6 +390,9 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
     const speakingEndedTimeRef = useRef<number>(0); // Timestamp when speaking ended
     const hasEverSpokenRef = useRef(false); // Track if avatar has ever spoken (for delayed recognition start)
     const lastSpokenTextRef = useRef<string>(""); // Track what avatar just said to filter it out
+    const isTestModeRef = useRef(false); // Track if current speech is a test (don't reset mood/gesture)
+    const currentMoodRef = useRef<string | null>(null); // Track current mood for test mode (to pass to speakAudio)
+    const persistMoodRef = useRef(false); // Track if mood should persist after speaking (guardrails)
 
     const [state, setState] = useState<AvatarState>("disconnected");
     const [isLoading, setIsLoading] = useState(false);
@@ -497,19 +643,41 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
         const setupMessageHandler = (tts: HeadTTSInstance) => {
           tts.onmessage = (message: HeadTTSMessage) => {
             if (message.type === "audio" && message.data && headRef.current) {
+              // Build options with mood if in test mode
+              const audioOptions: Record<string, unknown> = {};
+              if (currentMoodRef.current) {
+                audioOptions.mood = currentMoodRef.current;
+              }
+
+              // Re-apply mood after a short delay to ensure it persists during speech
+              // (TalkingHead may reset mood when audio starts)
+              if (currentMoodRef.current && headRef.current) {
+                const moodToApply = currentMoodRef.current;
+                setTimeout(() => {
+                  if (headRef.current) {
+                    headRef.current.setMood(moodToApply);
+                    console.log(`[Mood] Re-applied during speech: ${moodToApply}`);
+                  }
+                }, 100);
+              }
+
               // Pass audio data to TalkingHead for lip-sync playback
-              headRef.current.speakAudio(message.data, {}, () => {
+              headRef.current.speakAudio(message.data, audioOptions, () => {
                 // Audio finished
                 setIsSpeaking(false);
                 isSpeakingRef.current = false;
                 speakingEndedTimeRef.current = Date.now(); // Mark when speaking ended
                 updateState("connected");
 
-                // Reset mood to neutral and stop any gestures
-                if (headRef.current) {
+                // Reset mood to neutral and stop any gestures (unless in test mode or persistMood)
+                if (headRef.current && !isTestModeRef.current && !persistMoodRef.current) {
                   headRef.current.setMood("neutral");
                   headRef.current.stopGesture(500);
+                  currentMoodRef.current = null;
                 }
+                isTestModeRef.current = false; // Reset test mode flag
+                // Note: persistMoodRef stays true until next message clears it
+                // Note: currentMoodRef stays set in test mode so mood persists
 
                 // Resume speech recognition after speaking completes with delay
                 // to avoid picking up echo/reverb of avatar's voice
@@ -631,6 +799,22 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
       async (text: string) => {
         if (!headRef.current || !headTTSRef.current) return;
 
+        // Analyze text for semantic content (mood and gestures)
+        const semantics = analyzeTextSemantics(text);
+        console.log(`[Semantics] Analysis:`, semantics);
+
+        // Check if this is a mood-only test (just set mood, don't speak)
+        const isMoodOnlyTest = semantics.isTest && semantics.mood && semantics.gestures.length === 0;
+
+        if (isMoodOnlyTest) {
+          // Silent mood switch - just set the mood and return
+          headRef.current.setMood(semantics.mood!);
+          currentMoodRef.current = semantics.mood;
+          isTestModeRef.current = true;
+          console.log(`[Mood Test] Silently switched to: ${semantics.mood}`);
+          return;
+        }
+
         try {
           setIsSpeaking(true);
           isSpeakingRef.current = true;
@@ -648,9 +832,23 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
             }
           }
 
-          // Analyze text for semantic content (mood and gestures)
-          const semantics = analyzeTextSemantics(text);
-          console.log(`[Semantics] Analysis:`, semantics);
+          // Track if this is a test mode (don't reset mood/gesture after speaking)
+          isTestModeRef.current = semantics.isTest;
+
+          // Track if mood should persist after speaking (guardrails)
+          // Clear previous persistMood when new message arrives (mood will reset on next non-guardrail message)
+          persistMoodRef.current = semantics.persistMood;
+          if (semantics.persistMood) {
+            console.log(`[Guardrail] Mood "${semantics.mood}" will persist after speaking until next message`);
+          }
+
+          // Store mood for test mode (will be passed to speakAudio to persist during speech)
+          if (semantics.isTest && semantics.mood) {
+            currentMoodRef.current = semantics.mood;
+            console.log(`[Test Mode] Mood "${semantics.mood}" will persist during and after speaking`);
+          } else {
+            currentMoodRef.current = null;
+          }
 
           // Set mood based on semantic analysis
           if (semantics.mood && headRef.current) {
