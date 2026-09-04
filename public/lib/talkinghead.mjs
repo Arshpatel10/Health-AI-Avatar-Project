@@ -3284,7 +3284,11 @@ class TalkingHead {
       if ( item.anim ) {
         // Find the lowest negative time point, if any
         if ( !item.isRaw ) {
-          delay = Math.abs(Math.min(0, ...item.anim.map( x => Math.min(...x.ts) ) ) );
+          // Filter out items with empty ts arrays to avoid Infinity from Math.min(...[])
+          const validTimes = item.anim
+            .filter(x => x.ts && x.ts.length > 0)
+            .map(x => Math.min(...x.ts));
+          delay = validTimes.length > 0 ? Math.abs(Math.min(0, ...validTimes)) : 0;
         }
         item.anim.forEach( x => {
           for(let i=0; i<x.ts.length; i++) {
@@ -3295,7 +3299,9 @@ class TalkingHead {
       }
 
       // Play, delay in seconds so pre-animations can be played
-      source.start( this.audioCtx.currentTime + delay/1000);
+      // Ensure startTime is finite to avoid "non-finite" error
+      const startTime = this.audioCtx.currentTime + delay/1000;
+      source.start( Number.isFinite(startTime) ? startTime : this.audioCtx.currentTime );
 
     } else {
       this.isAudioPlaying = false;

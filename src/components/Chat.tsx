@@ -29,6 +29,20 @@ export default function Chat() {
   const pendingTextResponseRef = useRef<string | null>(null); // Track text-initiated responses
   const hasSpokenIntroRef = useRef(false); // Track if intro message has been spoken
 
+  // Strip citation references like [lit_doc_149/chunk_8d79c2b36f20] from text for display
+  const stripCitationsForDisplay = (text: string): string => {
+    return text.replace(/\[lit_doc_\d+\/chunk_[a-f0-9]+\]/gi, "").replace(/\s{2,}/g, " ").trim();
+  };
+
+  // Strip citations AND parenthetical content for speaking (avatar shouldn't speak citations or parentheses)
+  const stripForSpeaking = (text: string): string => {
+    return text
+      .replace(/\[lit_doc_\d+\/chunk_[a-f0-9]+\]/gi, "") // Remove citations
+      .replace(/\([^)]*\)/g, "") // Remove content inside parentheses
+      .replace(/\s{2,}/g, " ") // Collapse multiple spaces
+      .trim();
+  };
+
   // Initial greeting message
   const INTRO_MESSAGE = "Hello! This health coach provides general educational information about adult health, including maternal health. It does not diagnose symptoms, provide individualized treatment recommendations, or advise on treatment or care for babies or children. Please do not use it for urgent or emergency concerns; contact your healthcare team or local emergency services when appropriate.";
 
@@ -126,9 +140,11 @@ export default function Chat() {
       setMessages((prev) => [...prev, assistantMessage]);
 
       // Have the avatar speak the response from our backend
+      // Strip citations and parenthetical content before speaking
       if (avatarRef.current) {
-        pendingTextResponseRef.current = response.answer; // Mark to avoid duplicate in transcription
-        avatarRef.current.speakText(response.answer);
+        const textToSpeak = stripForSpeaking(response.answer);
+        pendingTextResponseRef.current = textToSpeak; // Mark to avoid duplicate in transcription
+        avatarRef.current.speakText(textToSpeak);
       }
     } catch (error) {
       console.error("Error getting response:", error);
@@ -183,9 +199,11 @@ export default function Chat() {
       setMessages((prev) => [...prev, assistantMessage]);
 
       // Have the avatar speak the response
+      // Strip citations and parenthetical content before speaking
       if (avatarRef.current && (avatarState === "connected" || avatarState === "listening" || avatarState === "speaking")) {
-        pendingTextResponseRef.current = response.answer; // Mark as text-initiated to avoid duplicate
-        avatarRef.current.speakText(response.answer);
+        const textToSpeak = stripForSpeaking(response.answer);
+        pendingTextResponseRef.current = textToSpeak; // Mark as text-initiated to avoid duplicate
+        avatarRef.current.speakText(textToSpeak);
       }
     } catch (error) {
       console.error("Error getting response:", error);

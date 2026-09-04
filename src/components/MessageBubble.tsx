@@ -2,6 +2,11 @@
 
 import { ChatMessage, EvidenceItem } from "@/lib/types";
 
+// Strip citation references like [lit_doc_149/chunk_8d79c2b36f20] from displayed text
+function stripCitations(text: string): string {
+  return text.replace(/\[lit_doc_\d+\/chunk_[a-f0-9]+\]/gi, "").replace(/\s{2,}/g, " ").trim();
+}
+
 interface MessageBubbleProps {
   message: ChatMessage;
 }
@@ -125,7 +130,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
               </div>
               <div>
                 <h3 className="text-lg font-bold text-on-error-container">Urgent</h3>
-                <p className="mt-1 text-on-error-container">{response.answer}</p>
+                <p className="mt-1 text-on-error-container">{stripCitations(response.answer)}</p>
               </div>
             </div>
             <span className="text-xs mt-2 block text-on-error-container/70">{formatTime()}</span>
@@ -169,7 +174,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
         {response.emotion_state === "supportive" && !response.evidence_sufficient && (
           <span className="text-xs font-medium text-orange-600 mb-1 block">Insufficient Evidence</span>
         )}
-        <p className="text-base leading-relaxed">{response.answer}</p>
+        <p className="text-base leading-relaxed">{stripCitations(response.answer)}</p>
         <span className="text-xs mt-2 block opacity-80">{formatTime()}</span>
         <EvidenceSection sources={response.evidence_used} />
       </div>
