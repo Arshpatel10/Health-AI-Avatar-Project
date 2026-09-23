@@ -1,0 +1,572 @@
+/**
+ * Metrics collection and export for research evaluation
+ * Implements instrumentation required by Section 4.11 of the research paper
+ */
+
+// Types for metrics collection
+
+export interface LatencyMetrics {
+  turnId: string;
+  inputType: "typed" | "spoken";
+  timestamp: string;
+  // Timestamps (ms from performance.now())
+  T0_speechRecognitionEnd: number | null;      // End of speech recognition
+  T1_requestSent: number;                       // Frontend request sent
+  T2_responseReceived: number;                  // Response received from backend
+  T3_serverProcessingMs: number | null;         // Server-side processing time (from backend)
+  T4_firstAudioReady: number | null;            // First audio sample ready
+  T5_firstMouthMovement: number | null;         // First rendered mouth movement
+  // Calculated stages (ms)
+  S1_sttToRequest: number | null;               // T1 - T0
+  S2_networkRoundTrip: number | null;           // T2 - T1
+  S3_backendProcessing: number | null;          // Server interval
+  S4_ttsSynthesis: number | null;               // T4 - T2
+  S5_lipSyncStartup: number | null;             // T5 - T4
+  totalEndToEnd: number | null;                 // T4 - T0 (or T4 - T1 for typed)
+}
+
+export interface InteractionMetrics {
+  turnId: string;
+  timestamp: string;
+  responseState: "full" | "partial" | "refused" | "safety" | "error";
+  completed: boolean;
+  unrecoveredError: string | null;
+}
+
+export interface PresentationMetrics {
+  turnId: string;
+  timestamp: string;
+  responseState: "full" | "partial" | "refused" | "safety";
+  elements: {
+    answerSpoken: boolean;
+    answerDisplayed: boolean;
+    citationsRendered: boolean;
+    citationCount: number;
+    insufficientEvidenceShown: boolean;
+    amberStatusActive: boolean;
+    safetyModalOpened: boolean;
+    urgentTranscriptEntry: boolean;
+    avatarWarningState: boolean;
+    warningStatePersisted: boolean;
+    statusStateCorrect: boolean;
+  };
+}
+
+export interface EchoSuppressionMetrics {
+  eventId: string;
+  timestamp: string;
+  transcriptText: string;
+  wasAccepted: boolean;
+  rejectedByLayer: 1 | 2 | 3 | 4 | null;  // Which layer rejected it, null if accepted
+  rejectionReason: string | null;
+  isSelfTranscription: boolean;           // Was this the avatar's own speech?
+  suppressionEnabled: boolean;
+}
+
+export interface VisemeMetrics {
+  utteranceId: string;
+  timestamp: string;
+  visemeEvents: Array<{
+    visemeIndex: number;
+    visemeName: string;
+    scheduledTimestamp: number;   // When it was supposed to happen
+    appliedTimestamp: number;     // When it actually happened
+    errorMs: number;              // Difference (positive = visual lags audio)
+  }>;
+  totalEvents: number;
+  medianErrorMs: number;
+  p95ErrorMs: number;
+  executionMode: "WebGPU" | "WebAssembly" | "unknown";
+}
+
+export interface FailureRecoveryMetrics {
+  eventId: string;
+  timestamp: string;
+  failureType: string;
+  recovered: boolean;
+  userFacingState: string;
+  spokenMessage: string | null;
+  textInputAvailable: boolean;
+}
+
+// Main metrics store
+class MetricsCollector {
+  private latencyMetrics: LatencyMetrics[] = [];
+  private interactionMetrics: InteractionMetrics[] = [];
+  private presentationMetrics: PresentationMetrics[] = [];
+  private echoSuppressionMetrics: EchoSuppressionMetrics[] = [];
+  private visemeMetrics: VisemeMetrics[] = [];
+  private failureRecoveryMetrics: FailureRecoveryMetrics[] = [];
+
+  // Current turn tracking for latency
+  private currentTurn: Partial<LatencyMetrics> | null = null;
+  private currentTurnId: string | null = null;
+
+  // Echo suppression layer toggle (for ablation testing)
+  public echoSuppressionConfig = {
+    layer1Enabled: true,  // Abort recognition before playback
+    layer2Enabled: true,  // Reject while speaking flag set
+    layer3Enabled: true,  // Reject within 2000ms of playback end
+    layer4Enabled: true,  // Reject substring of last spoken text
+  };
+
+  private generateId(): string {
+    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  // ===== LATENCY METRICS (Table 7) =====
+
+  startTurn(inputType: "typed" | "spoken"): string {
+    const turnId = this.generateId();
+    this.currentTurnId = turnId;
+    this.currentTurn = {
+      turnId,
+      inputType,
+      timestamp: new Date().toISOString(),
+      T0_speechRecognitionEnd: null,
+      T1_requestSent: 0,
+      T2_responseReceived: 0,
+      T3_serverProcessingMs: null,
+      T4_firstAudioReady: null,
+      T5_firstMouthMovement: null,
+    };
+    console.log(`[METRICS] Turn started | turnId: ${turnId} | inputType: ${inputType}`);
+    return turnId;
+  }
+
+  recordT0_SpeechRecognitionEnd(): void {
+    if (this.currentTurn) {
+      this.currentTurn.T0_speechRecognitionEnd = performance.now();
+      console.log(`[METRICS] T0_speechRecognitionEnd: ${this.currentTurn.T0_speechRecognitionEnd.toFixed(2)}ms`);
+    }
+  }
+
+  recordT1_RequestSent(): void {
+    if (this.currentTurn) {
+      this.currentTurn.T1_requestSent = performance.now();
+      console.log(`[METRICS] T1_requestSent: ${this.currentTurn.T1_requestSent.toFixed(2)}ms`);
+    }
+  }
+
+  recordT2_ResponseReceived(serverProcessingMs?: number): void {
+    if (this.currentTurn) {
+      this.currentTurn.T2_responseReceived = performance.now();
+      if (serverProcessingMs !== undefined) {
+        this.currentTurn.T3_serverProcessingMs = serverProcessingMs;
+        console.log(`[METRICS] T3_serverProcessingMs (S3_backendProcessing): ${serverProcessingMs.toFixed(2)}ms`);
+      }
+      console.log(`[METRICS] T2_responseReceived: ${this.currentTurn.T2_responseReceived.toFixed(2)}ms`);
+    }
+  }
+
+  recordT4_FirstAudioReady(): void {
+    if (this.currentTurn) {
+      this.currentTurn.T4_firstAudioReady = performance.now();
+      console.log(`[METRICS] T4_firstAudioReady: ${this.currentTurn.T4_firstAudioReady.toFixed(2)}ms`);
+    }
+  }
+
+  recordT5_FirstMouthMovement(): void {
+    if (this.currentTurn) {
+      this.currentTurn.T5_firstMouthMovement = performance.now();
+      console.log(`[METRICS] T5_firstMouthMovement: ${this.currentTurn.T5_firstMouthMovement.toFixed(2)}ms`);
+    }
+  }
+
+  finishTurn(): LatencyMetrics | null {
+    if (!this.currentTurn || !this.currentTurnId) return null;
+
+    const metrics = this.currentTurn as LatencyMetrics;
+
+    // Calculate stages
+    if (metrics.T0_speechRecognitionEnd && metrics.T1_requestSent) {
+      metrics.S1_sttToRequest = metrics.T1_requestSent - metrics.T0_speechRecognitionEnd;
+      console.log(`[METRICS] S1_sttToRequest: ${metrics.S1_sttToRequest.toFixed(2)}ms`);
+    } else {
+      metrics.S1_sttToRequest = null;
+    }
+
+    if (metrics.T1_requestSent && metrics.T2_responseReceived) {
+      metrics.S2_networkRoundTrip = metrics.T2_responseReceived - metrics.T1_requestSent;
+      console.log(`[METRICS] S2_networkRoundTrip: ${metrics.S2_networkRoundTrip.toFixed(2)}ms`);
+    } else {
+      metrics.S2_networkRoundTrip = null;
+    }
+
+    metrics.S3_backendProcessing = metrics.T3_serverProcessingMs ?? null;
+
+    if (metrics.T2_responseReceived && metrics.T4_firstAudioReady) {
+      metrics.S4_ttsSynthesis = metrics.T4_firstAudioReady - metrics.T2_responseReceived;
+      console.log(`[METRICS] S4_ttsSynthesis: ${metrics.S4_ttsSynthesis.toFixed(2)}ms`);
+    } else {
+      metrics.S4_ttsSynthesis = null;
+    }
+
+    if (metrics.T4_firstAudioReady && metrics.T5_firstMouthMovement) {
+      metrics.S5_lipSyncStartup = metrics.T5_firstMouthMovement - metrics.T4_firstAudioReady;
+      console.log(`[METRICS] S5_lipSyncStartup: ${metrics.S5_lipSyncStartup.toFixed(2)}ms`);
+    } else {
+      metrics.S5_lipSyncStartup = null;
+    }
+
+    // Total end-to-end
+    const startTime = metrics.T0_speechRecognitionEnd ?? metrics.T1_requestSent;
+    if (startTime && metrics.T4_firstAudioReady) {
+      metrics.totalEndToEnd = metrics.T4_firstAudioReady - startTime;
+      console.log(`[METRICS] totalEndToEnd: ${metrics.totalEndToEnd.toFixed(2)}ms`);
+    } else {
+      metrics.totalEndToEnd = null;
+    }
+
+    this.latencyMetrics.push(metrics);
+
+    console.log(`[METRICS] === Turn Complete ===`);
+    console.log(`[METRICS] Summary for turn ${metrics.turnId}:`);
+    console.log(`[METRICS]   Input type: ${metrics.inputType}`);
+    console.log(`[METRICS]   S1 (STT to request): ${metrics.S1_sttToRequest?.toFixed(2) ?? 'N/A'}ms`);
+    console.log(`[METRICS]   S2 (Network round trip): ${metrics.S2_networkRoundTrip?.toFixed(2) ?? 'N/A'}ms`);
+    console.log(`[METRICS]   S3 (Backend processing): ${metrics.S3_backendProcessing?.toFixed(2) ?? 'N/A'}ms`);
+    console.log(`[METRICS]   S4 (TTS synthesis): ${metrics.S4_ttsSynthesis?.toFixed(2) ?? 'N/A'}ms`);
+    console.log(`[METRICS]   S5 (Lip-sync startup): ${metrics.S5_lipSyncStartup?.toFixed(2) ?? 'N/A'}ms`);
+    console.log(`[METRICS]   Total end-to-end: ${metrics.totalEndToEnd?.toFixed(2) ?? 'N/A'}ms`);
+
+    this.currentTurn = null;
+    this.currentTurnId = null;
+
+    return metrics;
+  }
+
+  // ===== INTERACTION METRICS (Table 8) =====
+
+  recordInteraction(
+    responseState: "full" | "partial" | "refused" | "safety" | "error",
+    completed: boolean,
+    unrecoveredError: string | null = null
+  ): void {
+    const metrics: InteractionMetrics = {
+      turnId: this.currentTurnId || this.generateId(),
+      timestamp: new Date().toISOString(),
+      responseState,
+      completed,
+      unrecoveredError,
+    };
+    this.interactionMetrics.push(metrics);
+
+    console.log(`[METRICS] Interaction recorded:`);
+    console.log(`[METRICS]   responseState: ${responseState}`);
+    console.log(`[METRICS]   completed: ${completed}`);
+    if (unrecoveredError) {
+      console.log(`[METRICS]   unrecoveredError: ${unrecoveredError}`);
+    }
+  }
+
+  // ===== PRESENTATION METRICS (Table 9) =====
+
+  recordPresentation(
+    responseState: "full" | "partial" | "refused" | "safety",
+    elements: PresentationMetrics["elements"]
+  ): void {
+    const metrics: PresentationMetrics = {
+      turnId: this.currentTurnId || this.generateId(),
+      timestamp: new Date().toISOString(),
+      responseState,
+      elements,
+    };
+    this.presentationMetrics.push(metrics);
+
+    console.log(`[METRICS] Presentation recorded for state: ${responseState}`);
+    console.log(`[METRICS]   answerSpoken: ${elements.answerSpoken}`);
+    console.log(`[METRICS]   answerDisplayed: ${elements.answerDisplayed}`);
+    console.log(`[METRICS]   citationsRendered: ${elements.citationsRendered}`);
+    console.log(`[METRICS]   citationCount: ${elements.citationCount}`);
+    console.log(`[METRICS]   insufficientEvidenceShown: ${elements.insufficientEvidenceShown}`);
+    console.log(`[METRICS]   amberStatusActive: ${elements.amberStatusActive}`);
+    console.log(`[METRICS]   safetyModalOpened: ${elements.safetyModalOpened}`);
+    console.log(`[METRICS]   urgentTranscriptEntry: ${elements.urgentTranscriptEntry}`);
+    console.log(`[METRICS]   avatarWarningState: ${elements.avatarWarningState}`);
+    console.log(`[METRICS]   warningStatePersisted: ${elements.warningStatePersisted}`);
+    console.log(`[METRICS]   statusStateCorrect: ${elements.statusStateCorrect}`);
+  }
+
+  // ===== ECHO SUPPRESSION METRICS (Table 11) =====
+
+  recordEchoSuppressionEvent(
+    transcriptText: string,
+    wasAccepted: boolean,
+    rejectedByLayer: 1 | 2 | 3 | 4 | null,
+    rejectionReason: string | null,
+    isSelfTranscription: boolean
+  ): void {
+    const metrics: EchoSuppressionMetrics = {
+      eventId: this.generateId(),
+      timestamp: new Date().toISOString(),
+      transcriptText,
+      wasAccepted,
+      rejectedByLayer,
+      rejectionReason,
+      isSelfTranscription,
+      suppressionEnabled: Object.values(this.echoSuppressionConfig).some(v => v),
+    };
+    this.echoSuppressionMetrics.push(metrics);
+
+    console.log(`[METRICS] Echo suppression event:`);
+    console.log(`[METRICS]   transcriptText: "${transcriptText.substring(0, 50)}${transcriptText.length > 50 ? '...' : ''}"`);
+    console.log(`[METRICS]   wasAccepted: ${wasAccepted}`);
+    console.log(`[METRICS]   rejectedByLayer: ${rejectedByLayer ?? 'N/A (accepted)'}`);
+    console.log(`[METRICS]   rejectionReason: ${rejectionReason ?? 'N/A'}`);
+    console.log(`[METRICS]   isSelfTranscription: ${isSelfTranscription}`);
+  }
+
+  // ===== VISEME METRICS (Table 12) =====
+
+  recordVisemeMetrics(
+    visemeEvents: VisemeMetrics["visemeEvents"],
+    executionMode: "WebGPU" | "WebAssembly" | "unknown"
+  ): void {
+    if (visemeEvents.length === 0) return;
+
+    // Calculate errors
+    const errors = visemeEvents.map(e => e.errorMs).sort((a, b) => a - b);
+    const absErrors = visemeEvents.map(e => Math.abs(e.errorMs)).sort((a, b) => a - b);
+
+    const medianIdx = Math.floor(absErrors.length / 2);
+    const p95Idx = Math.floor(absErrors.length * 0.95);
+
+    const metrics: VisemeMetrics = {
+      utteranceId: this.generateId(),
+      timestamp: new Date().toISOString(),
+      visemeEvents,
+      totalEvents: visemeEvents.length,
+      medianErrorMs: absErrors[medianIdx] || 0,
+      p95ErrorMs: absErrors[p95Idx] || absErrors[absErrors.length - 1] || 0,
+      executionMode,
+    };
+    this.visemeMetrics.push(metrics);
+
+    console.log(`[METRICS] Viseme timing recorded:`);
+    console.log(`[METRICS]   totalEvents: ${metrics.totalEvents}`);
+    console.log(`[METRICS]   medianAbsoluteError: ${metrics.medianErrorMs.toFixed(2)}ms`);
+    console.log(`[METRICS]   p95AbsoluteError: ${metrics.p95ErrorMs.toFixed(2)}ms`);
+    console.log(`[METRICS]   executionMode: ${executionMode}`);
+  }
+
+  // ===== FAILURE RECOVERY METRICS (Table 10) =====
+
+  recordFailureRecovery(
+    failureType: string,
+    recovered: boolean,
+    userFacingState: string,
+    spokenMessage: string | null,
+    textInputAvailable: boolean
+  ): void {
+    const metrics: FailureRecoveryMetrics = {
+      eventId: this.generateId(),
+      timestamp: new Date().toISOString(),
+      failureType,
+      recovered,
+      userFacingState,
+      spokenMessage,
+      textInputAvailable,
+    };
+    this.failureRecoveryMetrics.push(metrics);
+
+    console.log(`[METRICS] Failure recovery recorded:`);
+    console.log(`[METRICS]   failureType: ${failureType}`);
+    console.log(`[METRICS]   recovered: ${recovered}`);
+    console.log(`[METRICS]   userFacingState: ${userFacingState}`);
+    console.log(`[METRICS]   spokenMessage: ${spokenMessage ?? 'N/A'}`);
+    console.log(`[METRICS]   textInputAvailable: ${textInputAvailable}`);
+  }
+
+  // ===== EXPORT FUNCTIONS =====
+
+  getAllMetrics() {
+    return {
+      exportedAt: new Date().toISOString(),
+      environment: {
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown',
+        platform: typeof navigator !== 'undefined' ? navigator.platform : 'unknown',
+      },
+      latencyMetrics: this.latencyMetrics,
+      interactionMetrics: this.interactionMetrics,
+      presentationMetrics: this.presentationMetrics,
+      echoSuppressionMetrics: this.echoSuppressionMetrics,
+      visemeMetrics: this.visemeMetrics,
+      failureRecoveryMetrics: this.failureRecoveryMetrics,
+    };
+  }
+
+  exportToJSON(): string {
+    return JSON.stringify(this.getAllMetrics(), null, 2);
+  }
+
+  downloadMetrics(): void {
+    const data = this.exportToJSON();
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `metrics-export-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    console.log(`[METRICS] Exported ${this.latencyMetrics.length} latency records, ${this.interactionMetrics.length} interaction records, ${this.echoSuppressionMetrics.length} echo suppression records, ${this.visemeMetrics.length} viseme records`);
+  }
+
+  clearMetrics(): void {
+    this.latencyMetrics = [];
+    this.interactionMetrics = [];
+    this.presentationMetrics = [];
+    this.echoSuppressionMetrics = [];
+    this.visemeMetrics = [];
+    this.failureRecoveryMetrics = [];
+    console.log(`[METRICS] All metrics cleared`);
+  }
+
+  // ===== SUMMARY STATISTICS =====
+
+  getLatencySummary(): {
+    typed: { count: number; stages: Record<string, { median: number; p95: number } | null> };
+    spoken: { count: number; stages: Record<string, { median: number; p95: number } | null> };
+  } {
+    const calculateStats = (values: number[]): { median: number; p95: number } | null => {
+      if (values.length === 0) return null;
+      const sorted = [...values].sort((a, b) => a - b);
+      const medianIdx = Math.floor(sorted.length / 2);
+      const p95Idx = Math.floor(sorted.length * 0.95);
+      return {
+        median: sorted[medianIdx],
+        p95: sorted[p95Idx] || sorted[sorted.length - 1],
+      };
+    };
+
+    const getStageValues = (metrics: LatencyMetrics[], stage: keyof LatencyMetrics): number[] => {
+      return metrics
+        .map(m => m[stage] as number | null)
+        .filter((v): v is number => v !== null);
+    };
+
+    const typedMetrics = this.latencyMetrics.filter(m => m.inputType === 'typed');
+    const spokenMetrics = this.latencyMetrics.filter(m => m.inputType === 'spoken');
+
+    const stages = ['S1_sttToRequest', 'S2_networkRoundTrip', 'S3_backendProcessing', 'S4_ttsSynthesis', 'S5_lipSyncStartup', 'totalEndToEnd'] as const;
+
+    const typedStages: Record<string, { median: number; p95: number } | null> = {};
+    const spokenStages: Record<string, { median: number; p95: number } | null> = {};
+
+    for (const stage of stages) {
+      typedStages[stage] = calculateStats(getStageValues(typedMetrics, stage));
+      spokenStages[stage] = calculateStats(getStageValues(spokenMetrics, stage));
+    }
+
+    return {
+      typed: { count: typedMetrics.length, stages: typedStages },
+      spoken: { count: spokenMetrics.length, stages: spokenStages },
+    };
+  }
+
+  printLatencySummary(): void {
+    const summary = this.getLatencySummary();
+
+    console.log(`\n[METRICS] ========== LATENCY SUMMARY (Table 7) ==========`);
+    console.log(`[METRICS] TYPED INPUT (N=${summary.typed.count}):`);
+    for (const [stage, stats] of Object.entries(summary.typed.stages)) {
+      if (stats) {
+        console.log(`[METRICS]   ${stage}: median=${stats.median.toFixed(2)}ms, p95=${stats.p95.toFixed(2)}ms`);
+      } else {
+        console.log(`[METRICS]   ${stage}: No data`);
+      }
+    }
+
+    console.log(`[METRICS] SPOKEN INPUT (N=${summary.spoken.count}):`);
+    for (const [stage, stats] of Object.entries(summary.spoken.stages)) {
+      if (stats) {
+        console.log(`[METRICS]   ${stage}: median=${stats.median.toFixed(2)}ms, p95=${stats.p95.toFixed(2)}ms`);
+      } else {
+        console.log(`[METRICS]   ${stage}: No data`);
+      }
+    }
+    console.log(`[METRICS] ====================================================\n`);
+  }
+
+  getInteractionSummary(): Record<string, { total: number; completed: number; rate: string }> {
+    const states = ['full', 'partial', 'refused', 'safety', 'error'] as const;
+    const summary: Record<string, { total: number; completed: number; rate: string }> = {};
+
+    for (const state of states) {
+      const stateMetrics = this.interactionMetrics.filter(m => m.responseState === state);
+      const completed = stateMetrics.filter(m => m.completed).length;
+      const total = stateMetrics.length;
+      summary[state] = {
+        total,
+        completed,
+        rate: total > 0 ? `${((completed / total) * 100).toFixed(1)}%` : 'N/A',
+      };
+    }
+
+    return summary;
+  }
+
+  printInteractionSummary(): void {
+    const summary = this.getInteractionSummary();
+
+    console.log(`\n[METRICS] ========== INTERACTION SUMMARY (Table 8) ==========`);
+    for (const [state, stats] of Object.entries(summary)) {
+      console.log(`[METRICS]   ${state}: ${stats.completed}/${stats.total} completed (${stats.rate})`);
+    }
+    console.log(`[METRICS] ======================================================\n`);
+  }
+
+  getEchoSuppressionSummary(): {
+    totalTrials: number;
+    selfTranscriptionsAccepted: number;
+    rate: string;
+    rejectionsByLayer: Record<number, number>;
+  } {
+    const selfTranscriptions = this.echoSuppressionMetrics.filter(m => m.isSelfTranscription);
+    const accepted = selfTranscriptions.filter(m => m.wasAccepted).length;
+
+    const rejectionsByLayer: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
+    for (const m of this.echoSuppressionMetrics) {
+      if (m.rejectedByLayer) {
+        rejectionsByLayer[m.rejectedByLayer]++;
+      }
+    }
+
+    return {
+      totalTrials: selfTranscriptions.length,
+      selfTranscriptionsAccepted: accepted,
+      rate: selfTranscriptions.length > 0 ? `${((accepted / selfTranscriptions.length) * 100).toFixed(1)}%` : 'N/A',
+      rejectionsByLayer,
+    };
+  }
+
+  printEchoSuppressionSummary(): void {
+    const summary = this.getEchoSuppressionSummary();
+
+    console.log(`\n[METRICS] ========== ECHO SUPPRESSION SUMMARY (Table 11) ==========`);
+    console.log(`[METRICS]   Total playback trials: ${summary.totalTrials}`);
+    console.log(`[METRICS]   Self-transcriptions accepted: ${summary.selfTranscriptionsAccepted}`);
+    console.log(`[METRICS]   Self-transcription rate: ${summary.rate}`);
+    console.log(`[METRICS]   Rejections by layer:`);
+    for (const [layer, count] of Object.entries(summary.rejectionsByLayer)) {
+      console.log(`[METRICS]     Layer ${layer}: ${count}`);
+    }
+    console.log(`[METRICS] ================================================================\n`);
+  }
+
+  printAllSummaries(): void {
+    this.printLatencySummary();
+    this.printInteractionSummary();
+    this.printEchoSuppressionSummary();
+  }
+}
+
+// Singleton instance
+export const metrics = new MetricsCollector();
+
+// Make available globally for debugging
+if (typeof window !== 'undefined') {
+  (window as unknown as { __metrics: MetricsCollector }).__metrics = metrics;
+}
