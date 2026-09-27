@@ -468,7 +468,7 @@ export default function Chat() {
             onUserTranscription={handleUserTranscription}
             onError={handleError}
             onManualDisconnect={handleManualDisconnect}
-            autoStart={true}
+            autoStart={false}
             speechSpeed={speechSpeed}
           />
 
