@@ -312,3 +312,15 @@ export async function getCoachResponse(query: string): Promise<CoachResponse> {
     emotion_state: "supportive", // guardrail_triggered === false → supportive
   };
 }
+
+export function backendErrorResponse(error: unknown): CoachResponse {
+  const detail = error instanceof Error ? error.message : "Unknown error";
+  return {
+    answer: `Something went wrong. Please try again. (${detail})`,
+    evidence_used: [],
+    evidence_sufficient: false,
+    sufficiency_reason: "insufficient_direct_support",
+    guardrail_triggered: false,
+    emotion_state: "supportive",
+  };
+}

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { ChatMessage, EmotionState } from "@/lib/types";
-import { backendErrorResponse, getCoachResponse } from "@/lib/ragBackend";
+import { backendErrorResponse, getCoachResponse } from "@/lib/mockBackend";
 import MessageInput from "./MessageInput";
 import MessageBubble from "./MessageBubble";
 import TalkingHeadAvatar, { AvatarState, TalkingHeadAvatarHandle } from "./TalkingHeadAvatar";
@@ -24,6 +24,7 @@ export default function Chat() {
   const [speechSpeed, setSpeechSpeed] = useState(1.0); // Speech speed (0.25 - 4.0)
   const [showVoiceSettings, setShowVoiceSettings] = useState(false); // Toggle voice settings panel
   const [isMicActive, setIsMicActive] = useState(false); // Track if mic is actively listening
+  const [showInstructions, setShowInstructions] = useState(false); // Toggle instructions popup
   const chatEndRef = useRef<HTMLDivElement>(null);
   const avatarRef = useRef<TalkingHeadAvatarHandle>(null);
   const voiceSettingsRef = useRef<HTMLDivElement>(null);
@@ -278,6 +279,107 @@ export default function Chat() {
         />
       )}
 
+      {/* Instructions Popup */}
+      {showInstructions && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-surface rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="sticky top-0 bg-surface border-b border-outline-variant p-4 flex justify-between items-center">
+              <h2 className="text-xl font-bold text-on-surface">Test Instructions</h2>
+              <button
+                onClick={() => setShowInstructions(false)}
+                className="p-2 hover:bg-surface-variant rounded-lg transition-colors"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6 space-y-6">
+              {/* Test Questions */}
+              <section>
+                <h3 className="text-lg font-semibold text-on-surface mb-3">Test Questions & Expected Responses</h3>
+                <div className="space-y-3 text-sm">
+                  <div className="bg-surface-variant p-3 rounded-lg">
+                    <p className="font-medium text-on-surface">&quot;hello&quot; / &quot;hi&quot; / &quot;hey&quot;</p>
+                    <p className="text-on-surface-variant mt-1">→ Returns greeting with disclaimer about the health coach</p>
+                  </div>
+                  <div className="bg-surface-variant p-3 rounded-lg">
+                    <p className="font-medium text-on-surface">&quot;cholesterol&quot; / &quot;ldl&quot; / &quot;fiber&quot;</p>
+                    <p className="text-on-surface-variant mt-1">→ Returns info about soluble fiber and LDL cholesterol</p>
+                  </div>
+                  <div className="bg-surface-variant p-3 rounded-lg">
+                    <p className="font-medium text-on-surface">&quot;water&quot; / &quot;hydration&quot; / &quot;drink&quot;</p>
+                    <p className="text-on-surface-variant mt-1">→ Returns hydration guidance (2-3 liters per day)</p>
+                  </div>
+                  <div className="bg-surface-variant p-3 rounded-lg">
+                    <p className="font-medium text-on-surface">&quot;sleep&quot; / &quot;insomnia&quot; / &quot;tired&quot;</p>
+                    <p className="text-on-surface-variant mt-1">→ Returns sleep recommendations (7-9 hours)</p>
+                  </div>
+                  <div className="bg-surface-variant p-3 rounded-lg">
+                    <p className="font-medium text-on-surface">&quot;hfpef&quot; / &quot;heart failure preserved&quot;</p>
+                    <p className="text-on-surface-variant mt-1">→ Returns info about HFpEF</p>
+                  </div>
+                </div>
+              </section>
+
+              {/* Safety Triggers */}
+              <section>
+                <h3 className="text-lg font-semibold text-red-600 mb-3">Safety Response Triggers (Fear Mood)</h3>
+                <div className="bg-red-50 p-3 rounded-lg text-sm">
+                  <p className="text-red-700 mb-2">These keywords trigger emergency responses and set the avatar to fear mood:</p>
+                  <ul className="text-red-600 space-y-1 list-disc list-inside">
+                    <li><strong>Cardiac/Stroke:</strong> &quot;chest pain&quot;, &quot;can&apos;t breathe&quot;, &quot;shortness of breath&quot;, &quot;left arm numb&quot;, &quot;face drooping&quot;, &quot;slurred speech&quot;</li>
+                    <li><strong>Mental Health:</strong> &quot;suicide&quot;, &quot;suicidal&quot;, &quot;kill myself&quot;, &quot;end my life&quot;, &quot;want to die&quot;, &quot;self harm&quot;</li>
+                    <li><strong>Severe Acute:</strong> &quot;overdose&quot;, &quot;anaphylaxis&quot;, &quot;severe allergic&quot;, &quot;unconscious&quot;, &quot;passed out&quot;, &quot;seizure&quot;</li>
+                  </ul>
+                </div>
+              </section>
+
+              {/* Mood Commands */}
+              <section>
+                <h3 className="text-lg font-semibold text-on-surface mb-3">Mood Test Commands</h3>
+                <p className="text-sm text-on-surface-variant mb-3">Type these to switch the avatar&apos;s mood (persists until changed):</p>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="bg-gray-100 p-2 rounded"><code>&quot;neutral mood&quot;</code> or <code>&quot;test neutral&quot;</code></div>
+                  <div className="bg-yellow-100 p-2 rounded"><code>&quot;happy mood&quot;</code> or <code>&quot;test happy&quot;</code></div>
+                  <div className="bg-red-100 p-2 rounded"><code>&quot;angry mood&quot;</code> or <code>&quot;test angry&quot;</code></div>
+                  <div className="bg-blue-100 p-2 rounded"><code>&quot;sad mood&quot;</code> or <code>&quot;test sad&quot;</code></div>
+                  <div className="bg-purple-100 p-2 rounded"><code>&quot;fear mood&quot;</code> or <code>&quot;test fear&quot;</code></div>
+                  <div className="bg-green-100 p-2 rounded"><code>&quot;disgust mood&quot;</code> or <code>&quot;test disgust&quot;</code></div>
+                  <div className="bg-pink-100 p-2 rounded"><code>&quot;love mood&quot;</code> or <code>&quot;test love&quot;</code></div>
+                  <div className="bg-indigo-100 p-2 rounded"><code>&quot;sleep mood&quot;</code> or <code>&quot;test sleep&quot;</code></div>
+                </div>
+              </section>
+
+              {/* Gesture Commands */}
+              <section>
+                <h3 className="text-lg font-semibold text-on-surface mb-3">Gesture Test Commands</h3>
+                <p className="text-sm text-on-surface-variant mb-3">Type these to trigger avatar gestures (persists for 15 seconds after speech ends):</p>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="bg-surface-variant p-2 rounded"><code>&quot;shrug gesture&quot;</code> or <code>&quot;test shrug&quot;</code></div>
+                  <div className="bg-surface-variant p-2 rounded"><code>&quot;point gesture&quot;</code> or <code>&quot;test point&quot;</code></div>
+                  <div className="bg-surface-variant p-2 rounded"><code>&quot;handup gesture&quot;</code> or <code>&quot;test handup&quot;</code></div>
+                  <div className="bg-surface-variant p-2 rounded"><code>&quot;thumbsup gesture&quot;</code> or <code>&quot;test thumbsup&quot;</code></div>
+                  <div className="bg-surface-variant p-2 rounded"><code>&quot;thumbsdown gesture&quot;</code> or <code>&quot;test thumbsdown&quot;</code></div>
+                  <div className="bg-surface-variant p-2 rounded"><code>&quot;ok gesture&quot;</code> or <code>&quot;test ok&quot;</code></div>
+                  <div className="bg-surface-variant p-2 rounded"><code>&quot;namaste gesture&quot;</code> or <code>&quot;test namaste&quot;</code></div>
+                  <div className="bg-surface-variant p-2 rounded"><code>&quot;nod gesture&quot;</code> or <code>&quot;test nod&quot;</code></div>
+                  <div className="bg-surface-variant p-2 rounded"><code>&quot;no gesture&quot;</code> or <code>&quot;test shake&quot;</code></div>
+                </div>
+              </section>
+
+              {/* Default Response */}
+              <section>
+                <h3 className="text-lg font-semibold text-on-surface mb-3">Default Response</h3>
+                <div className="bg-orange-50 p-3 rounded-lg text-sm">
+                  <p className="text-orange-700">Any unrecognized query returns: &quot;I don&apos;t have enough information in my reference documents to answer that reliably, so I&apos;d rather not guess.&quot;</p>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="flex justify-between items-center w-full px-6 h-16 sticky top-0 z-50 bg-surface border-b border-outline-variant">
         <div className="flex items-center gap-4">
@@ -287,6 +389,16 @@ export default function Chat() {
           </span>
         </div>
         <div className="flex items-center gap-4">
+          {/* Instructions Button */}
+          <button
+            onClick={() => setShowInstructions(true)}
+            className="p-2 rounded-lg hover:bg-surface-variant transition-colors"
+            title="Test Instructions"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-on-surface">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+            </svg>
+          </button>
           <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm transition-colors ${
             displayState === "warning"
               ? "bg-red-100 text-red-700"
