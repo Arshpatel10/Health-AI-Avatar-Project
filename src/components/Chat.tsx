@@ -23,11 +23,14 @@ export default function Chat() {
   const [isEvidenceSufficient, setIsEvidenceSufficient] = useState(true); // Track evidence sufficiency
   const [speechSpeed, setSpeechSpeed] = useState(1.0); // Speech speed (0.25 - 4.0)
   const [showVoiceSettings, setShowVoiceSettings] = useState(false); // Toggle voice settings panel
+  const [isMicActive, setIsMicActive] = useState(false); // Track if mic is actively listening
   const chatEndRef = useRef<HTMLDivElement>(null);
   const avatarRef = useRef<TalkingHeadAvatarHandle>(null);
   const voiceSettingsRef = useRef<HTMLDivElement>(null);
   const pendingTextResponseRef = useRef<string | null>(null); // Track text-initiated responses
   const hasSpokenIntroRef = useRef(false); // Track if intro message has been spoken
+  const hasMutedOnStartRef = useRef(false); // Track if we've muted on initial connect
+  const waitingForIntroToFinishRef = useRef(false); // Track if we're waiting for intro to finish before starting mic
 
   // Strip citation references like [lit_doc_149/chunk_8d79c2b36f20] from text for display
   const stripCitationsForDisplay = (text: string): string => {
@@ -71,14 +74,64 @@ export default function Chat() {
     }
   }, [messages]);
 
-  // Speak intro message when avatar connects
+  // Speak intro message when avatar connects and mute voice by default
   useEffect(() => {
-    if (avatarState === "connected" && !hasSpokenIntroRef.current && avatarRef.current) {
-      hasSpokenIntroRef.current = true;
-      // Small delay to ensure avatar is fully ready
-      setTimeout(() => {
-        avatarRef.current?.speakText(INTRO_MESSAGE);
-      }, 200);
+    if (avatarState === "connected" && avatarRef.current) {
+      // Mute voice on first connect (user must click mic button to enable)
+      if (!hasMutedOnStartRef.current) {
+        hasMutedOnStartRef.current = true;
+        avatarRef.current.muteVoice();
+        setIsMicActive(false);
+      }
+
+      // Try to speak intro message (may be blocked by Safari autoplay)
+      // If blocked, it will play when user clicks mic button instead
+      if (!hasSpokenIntroRef.current) {
+        hasSpokenIntroRef.current = true;
+        setTimeout(() => {
+          avatarRef.current?.speakText(INTRO_MESSAGE);
+        }, 200);
+      }
+    }
+  }, [avatarState]);
+
+  // Toggle microphone listening
+  const handleMicToggle = useCallback(() => {
+    if (!avatarRef.current) return;
+
+    if (isMicActive) {
+      avatarRef.current.muteVoice();
+      setIsMicActive(false);
+    } else {
+      // If avatar is currently speaking (e.g., intro), wait for it to finish
+      if (avatarState === "speaking") {
+        waitingForIntroToFinishRef.current = true;
+        // Safety timeout in case speaking state hangs (Safari autoplay issues)
+        setTimeout(() => {
+          if (waitingForIntroToFinishRef.current && avatarRef.current) {
+            waitingForIntroToFinishRef.current = false;
+            avatarRef.current.unmuteVoice();
+            setIsMicActive(true);
+          }
+        }, 5000);
+        return;
+      }
+
+      avatarRef.current.unmuteVoice();
+      setIsMicActive(true);
+    }
+  }, [isMicActive, avatarState]);
+
+  // Start listening after speaking finishes (if user clicked mic while speaking)
+  useEffect(() => {
+    if (
+      waitingForIntroToFinishRef.current &&
+      avatarState === "connected" &&
+      avatarRef.current
+    ) {
+      waitingForIntroToFinishRef.current = false;
+      avatarRef.current.unmuteVoice();
+      setIsMicActive(true);
     }
   }, [avatarState]);
 
@@ -144,7 +197,7 @@ export default function Chat() {
       if (avatarRef.current) {
         const textToSpeak = stripForSpeaking(response.answer);
         pendingTextResponseRef.current = textToSpeak; // Mark to avoid duplicate in transcription
-        avatarRef.current.speakText(textToSpeak);
+        avatarRef.current.speakText(textToSpeak, { guardrailTriggered: response.guardrail_triggered });
       }
     } catch (error) {
       console.error("Error getting response:", error);
@@ -203,7 +256,7 @@ export default function Chat() {
       if (avatarRef.current && (avatarState === "connected" || avatarState === "listening" || avatarState === "speaking")) {
         const textToSpeak = stripForSpeaking(response.answer);
         pendingTextResponseRef.current = textToSpeak; // Mark as text-initiated to avoid duplicate
-        avatarRef.current.speakText(textToSpeak);
+        avatarRef.current.speakText(textToSpeak, { guardrailTriggered: response.guardrail_triggered });
       }
     } catch (error) {
       console.error("Error getting response:", error);
@@ -229,6 +282,9 @@ export default function Chat() {
       <header className="flex justify-between items-center w-full px-6 h-16 sticky top-0 z-50 bg-surface border-b border-outline-variant">
         <div className="flex items-center gap-4">
           <span className="text-2xl font-bold text-primary">HealthAI</span>
+          <span className="hidden sm:inline text-xs text-on-surface-variant max-w-md">
+            This AI assistant provides general health information only and is not a substitute for professional medical advice, diagnosis, or treatment.
+          </span>
         </div>
         <div className="flex items-center gap-4">
           <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm transition-colors ${
@@ -280,12 +336,6 @@ export default function Chat() {
             {displayState === "disconnected" && "Disconnected"}
             {displayState === "error" && "Error"}
           </div>
-          <button className="p-2 rounded-full hover:bg-surface-variant transition-colors text-on-surface-variant">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-          </button>
           <div className="w-10 h-10 rounded-full bg-secondary-container flex items-center justify-center overflow-hidden border-2 border-primary-container">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-on-secondary-container">
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
@@ -297,7 +347,7 @@ export default function Chat() {
       {/* Main Content */}
       <main className="flex flex-1 flex-col overflow-y-auto bg-background lg:flex-row lg:overflow-hidden">
         {/* Avatar Section - Left Side */}
-        <section className="relative flex w-full shrink-0 items-center justify-center border-b border-outline-variant bg-gradient-to-b from-surface to-surface-variant py-4 lg:w-1/2 lg:border-b-0 lg:border-r lg:py-0">
+        <section className="relative flex w-full shrink-0 flex-col items-center justify-start border-b border-outline-variant bg-gradient-to-b from-surface to-surface-variant py-4 lg:w-1/2 lg:border-b-0 lg:border-r lg:py-0 lg:justify-center">
           <TalkingHeadAvatar
             ref={avatarRef}
             width={500}
@@ -309,6 +359,45 @@ export default function Chat() {
             autoStart={true}
             speechSpeed={speechSpeed}
           />
+
+          {/* Mic Button Below Avatar */}
+          <div className="flex flex-col items-center mt-4 mb-2">
+            <button
+              onClick={handleMicToggle}
+              disabled={isProcessing || avatarState === "speaking" || (avatarState !== "connected" && !isMicActive)}
+              className={`p-4 rounded-full shadow-lg transition-all duration-200 ${
+                isMicActive
+                  ? "bg-red-500 hover:bg-red-600 text-white animate-pulse"
+                  : avatarState === "connected" && !isProcessing
+                  ? "bg-primary hover:bg-primary/90 text-white"
+                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
+              }`}
+              title={isMicActive ? "Click to stop listening" : avatarState === "speaking" ? "Wait for avatar to finish speaking" : isProcessing ? "Wait for response" : "Click to start voice input"}
+            >
+              {isMicActive ? (
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
+                </svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+                </svg>
+              )}
+            </button>
+            <p className="mt-3 text-sm text-on-surface-variant text-center max-w-xs">
+              {isMicActive ? (
+                <span className="text-red-600 font-medium">Listening... Click to stop</span>
+              ) : avatarState === "speaking" ? (
+                <span className="text-purple-600">Wait for avatar to finish speaking...</span>
+              ) : isProcessing ? (
+                <span className="text-yellow-600">Waiting for response...</span>
+              ) : avatarState === "connected" ? (
+                "Click the microphone to speak your question"
+              ) : (
+                "Voice input available when avatar is ready"
+              )}
+            </p>
+          </div>
         </section>
 
         {/* Chat Section - Right Side */}
@@ -387,18 +476,8 @@ export default function Chat() {
             <MessageInput
               onSend={handleSend}
               onTypingChange={setIsTyping}
-              disabled={isProcessing}
-              placeholder={isProcessing ? "Checking the evidence..." : avatarState === "connected" ? "Type a message or speak to the avatar..." : "Ask a general HFpEF or CKM health question..."}
-              onMicToggle={(isMuted) => {
-                if (avatarRef.current) {
-                  if (isMuted) {
-                    avatarRef.current.muteVoice();
-                  } else {
-                    avatarRef.current.unmuteVoice();
-                  }
-                }
-              }}
-              isMicAvailable={avatarState === "connected" || avatarState === "listening" || avatarState === "speaking"}
+              disabled={isProcessing || avatarState === "speaking"}
+              placeholder={avatarState === "speaking" ? "Wait for avatar to finish speaking..." : isProcessing ? "Checking the evidence..." : "Type your health question here..."}
             />
             <div className="flex items-center justify-center gap-2 mt-2">
               <span className={`w-2 h-2 rounded-full transition-colors ${

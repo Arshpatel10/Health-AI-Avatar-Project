@@ -10,8 +10,12 @@ export type AvatarState =
   | "speaking"
   | "error";
 
+export interface SpeakOptions {
+  guardrailTriggered?: boolean;
+}
+
 export interface TalkingHeadAvatarHandle {
-  speakText: (text: string) => void;
+  speakText: (text: string, options?: SpeakOptions) => void;
   interrupt: () => void;
   muteVoice: () => void;
   unmuteVoice: () => void;
@@ -247,13 +251,7 @@ const SEMANTIC_MAPPINGS = {
     isTest: true
   },
   // ==================== ORIGINAL SEMANTIC MAPPINGS ====================
-  // Emergency/Warning keywords - trigger fear mood that persists until next message
-  emergency: {
-    keywords: ["emergency", "911", "call emergency", "urgent", "immediately", "right away", "seek emergency", "medical emergency", "crisis", "crisis line", "988"],
-    mood: "fear",
-    gestures: [],
-    persistMood: true  // Keep fear mood after speaking (guardrail responses)
-  },
+  // Note: Emergency/fear mood is now triggered by backend guardrail_triggered flag, not keywords
   warning: {
     keywords: ["warning", "caution", "careful", "danger", "risk", "serious", "critical"],
     mood: "sad",
@@ -305,14 +303,23 @@ const SEMANTIC_MAPPINGS = {
 
 /**
  * Analyzes text for semantic content and returns appropriate mood and gestures
+ * @param text - The text to analyze
+ * @param guardrailTriggered - If true, sets fear mood (from backend safety flag)
  */
-function analyzeTextSemantics(text: string): SemanticAnalysis {
+function analyzeTextSemantics(text: string, guardrailTriggered: boolean = false): SemanticAnalysis {
   const lowerText = text.toLowerCase();
   let mood: string | null = null;
   const gestures: Array<{ name: string; delay: number; duration?: number }> = [];
   const usedGestures = new Set<string>();
   let isTest = false;
   let persistMood = false;
+
+  // If guardrail was triggered by backend, set fear mood immediately
+  if (guardrailTriggered) {
+    mood = "fear";
+    persistMood = true;
+    console.log("[Semantics] Guardrail triggered by backend - setting fear mood");
+  }
 
   // Check each mapping category (priority order matters - test triggers first)
   const categories = [
@@ -323,8 +330,8 @@ function analyzeTextSemantics(text: string): SemanticAnalysis {
     "testNodGesture", "testNoGesture",
     "testShrugGesture", "testPointGesture", "testHandupGesture",
     "testThumbsupGesture", "testThumbsdownGesture", "testOkGesture", "testNamasteGesture",
-    // Original semantic mappings
-    "emergency", "warning", "negative", "positive", "greeting", "uncertainty", "emphasis", "supportive", "thinking"
+    // Original semantic mappings (note: "emergency" removed - now triggered by backend guardrail flag)
+    "warning", "negative", "positive", "greeting", "uncertainty", "emphasis", "supportive", "thinking"
   ];
 
   for (const category of categories) {
@@ -388,9 +395,9 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
     const scriptLoadedRef = useRef(false);
     const speakResolveRef = useRef<(() => void) | null>(null);
     const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-    const speakingEndedTimeRef = useRef<number>(0); // Timestamp when speaking ended
     const hasEverSpokenRef = useRef(false); // Track if avatar has ever spoken (for delayed recognition start)
-    const lastSpokenTextRef = useRef<string>(""); // Track what avatar just said to filter it out
+    const accumulatedTranscriptRef = useRef<string>(""); // Buffer for accumulating speech until user clicks stop
+    const lastInterimTranscriptRef = useRef<string>(""); // Track last interim result for Safari fallback
     const isTestModeRef = useRef(false); // Track if current speech is a test (don't reset mood/gesture)
     const currentMoodRef = useRef<string | null>(null); // Track current mood for test mode (to pass to speakAudio)
     const persistMoodRef = useRef(false); // Track if mood should persist after speaking (guardrails)
@@ -498,31 +505,11 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
       recognition.lang = "en-US";
 
       recognition.onresult = (event: SpeechRecognitionEvent) => {
-        // Ignore speech recognition results while avatar is speaking
-        if (isSpeakingRef.current) {
-          return;
-        }
-
-        // Ignore results within 2000ms after speaking ended (to avoid echo pickup)
-        const timeSinceSpeakingEnded = Date.now() - speakingEndedTimeRef.current;
-        if (speakingEndedTimeRef.current > 0 && timeSinceSpeakingEnded < 2000) {
-          console.log(`[Speech] Ignoring result within cooldown period (${timeSinceSpeakingEnded}ms since speaking ended)`);
-          return;
-        }
-
         // Get the recognition result
         const result = event.results[event.resultIndex];
-        const transcriptLower = result[0]?.transcript?.trim().toLowerCase() || "";
 
-        // Check if the transcript matches what the avatar just said (echo detection)
-        const lastSpoken = lastSpokenTextRef.current.toLowerCase();
-        if (lastSpoken && transcriptLower.length > 3) {
-          // Check if the transcript is a substring of what was just spoken
-          if (lastSpoken.includes(transcriptLower) || transcriptLower.includes(lastSpoken.substring(0, 50))) {
-            console.log(`[Speech] Ignoring echo of avatar speech: "${transcriptLower}"`);
-            return;
-          }
-        }
+        // Debug logging for Safari
+        console.log(`[Speech] Result: isFinal=${result.isFinal}, transcript="${result[0]?.transcript?.trim()}", resultIndex=${event.resultIndex}, totalResults=${event.results.length}`);
 
         // Clear any existing silence timeout
         if (silenceTimeoutRef.current) {
@@ -536,22 +523,25 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
         if (result.isFinal) {
           const transcript = result[0].transcript.trim();
           if (transcript) {
-            onUserTranscription?.(transcript);
+            // Accumulate transcript - don't send until user clicks stop
+            if (accumulatedTranscriptRef.current) {
+              accumulatedTranscriptRef.current += " " + transcript;
+            } else {
+              accumulatedTranscriptRef.current = transcript;
+            }
+            console.log(`[Speech] Accumulated (final): "${accumulatedTranscriptRef.current}"`);
+            // Clear interim since we got the final
+            lastInterimTranscriptRef.current = "";
           }
-          // After final result, return to connected after brief delay
-          silenceTimeoutRef.current = setTimeout(() => {
-            if (!isSpeakingRef.current) {
-              updateState("connected");
-            }
-          }, 500);
         } else {
-          // For interim results, set timeout to return to idle after silence
-          silenceTimeoutRef.current = setTimeout(() => {
-            if (!isSpeakingRef.current) {
-              updateState("connected");
-            }
-          }, 2000); // Return to idle after 2 seconds of silence
+          // Store interim result as fallback (Safari may not give final results)
+          const transcript = result[0]?.transcript?.trim() || "";
+          if (transcript) {
+            lastInterimTranscriptRef.current = transcript;
+            console.log(`[Speech] Interim transcript: "${transcript}"`);
+          }
         }
+        // Keep listening state while user is speaking (no timeout to return to connected)
       };
 
       recognition.onerror = (event: Event & { error?: string }) => {
@@ -572,27 +562,23 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
           return;
         }
 
-        // Don't restart if avatar is speaking - wait until speaking finishes
-        if (isSpeakingRef.current) {
-          console.log("[Speech] Recognition ended while avatar speaking, not restarting");
-          return;
-        }
-
-        // Don't restart if we're in the cooldown period after speaking
-        const timeSinceSpeakingEnded = Date.now() - speakingEndedTimeRef.current;
-        if (speakingEndedTimeRef.current > 0 && timeSinceSpeakingEnded < 2000) {
-          console.log(`[Speech] Recognition ended during cooldown (${timeSinceSpeakingEnded}ms), not restarting`);
-          return;
-        }
-
-        // Restart if not muted.
+        // Restart if not muted (user is still recording)
+        // Use delay to avoid browser throttling
         if (!isVoiceMutedRef.current && recognitionRef.current) {
-          try {
-            recognitionRef.current.start();
-            console.log("[Speech] Recognition restarted from onend");
-          } catch (e) {
-            // Ignore - may already be running
-          }
+          setTimeout(() => {
+            if (!isVoiceMutedRef.current && recognitionRef.current) {
+              try {
+                recognitionRef.current.start();
+                console.log("[Speech] Recognition restarted from onend");
+                // Maintain "listening" state if we have accumulated text
+                if (accumulatedTranscriptRef.current) {
+                  updateState("listening");
+                }
+              } catch (e) {
+                // May already be running, ignore
+              }
+            }
+          }, 100);
         }
       };
 
@@ -653,6 +639,26 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
         // Setup message handler function (used for both new and existing instances)
         const setupMessageHandler = (tts: HeadTTSInstance) => {
           tts.onmessage = (message: HeadTTSMessage) => {
+            console.log(`[HeadTTS] Message received: type=${message.type}`);
+
+            if (message.type === "error") {
+              console.error("[HeadTTS] Synthesis error:", message.data);
+              // Reset speaking state on error
+              setIsSpeaking(false);
+              isSpeakingRef.current = false;
+              updateState("connected");
+              if (speakResolveRef.current) {
+                speakResolveRef.current();
+                speakResolveRef.current = null;
+              }
+              return;
+            }
+
+            if (message.type === "ready") {
+              console.log("[HeadTTS] TTS ready");
+              return;
+            }
+
             if (message.type === "audio" && message.data && headRef.current) {
               // Build options with mood if in test mode
               const audioOptions: Record<string, unknown> = {};
@@ -677,7 +683,6 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
                 // Audio finished
                 setIsSpeaking(false);
                 isSpeakingRef.current = false;
-                speakingEndedTimeRef.current = Date.now(); // Mark when speaking ended
                 updateState("connected");
 
                 // Reset mood to neutral and stop any gestures (unless in test mode or persistMood)
@@ -689,27 +694,6 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
                 isTestModeRef.current = false; // Reset test mode flag
                 // Note: persistMoodRef stays true until next message clears it
                 // Note: currentMoodRef stays set in test mode so mood persists
-
-                // Resume speech recognition after speaking completes with delay
-                // to avoid picking up echo/reverb of avatar's voice
-                setTimeout(() => {
-                  // Clear the last spoken text after cooldown
-                  lastSpokenTextRef.current = "";
-
-                  if (
-                    recognitionRef.current &&
-                    !speechRecognitionBlockedRef.current &&
-                    !isVoiceMutedRef.current &&
-                    !isSpeakingRef.current
-                  ) {
-                    try {
-                      recognitionRef.current.start();
-                      console.log("[Speech] Recognition restarted after speaking cooldown");
-                    } catch (e) {
-                      // Ignore - may already be running
-                    }
-                  }
-                }, 1500); // Wait 1500ms before listening again
 
                 if (speakResolveRef.current) {
                   speakResolveRef.current();
@@ -817,11 +801,12 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
 
     // Speak text using HeadTTS (free, browser-based) with lip-sync
     const speakText = useCallback(
-      async (text: string) => {
+      async (text: string, options?: SpeakOptions) => {
         if (!headRef.current || !headTTSRef.current) return;
 
         // Analyze text for semantic content (mood and gestures)
-        const semantics = analyzeTextSemantics(text);
+        // Pass guardrailTriggered from options to set fear mood if backend flagged it
+        const semantics = analyzeTextSemantics(text, options?.guardrailTriggered);
         console.log(`[Semantics] Analysis:`, semantics);
 
         // Check if this is a mood-only test (just set mood, don't speak)
@@ -840,18 +825,7 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
           setIsSpeaking(true);
           isSpeakingRef.current = true;
           hasEverSpokenRef.current = true;
-          lastSpokenTextRef.current = text; // Track what we're saying for echo detection
           updateState("speaking");
-
-          // Abort speech recognition while speaking to prevent picking up avatar's voice
-          // Using abort() instead of stop() to discard any buffered audio
-          if (recognitionRef.current) {
-            try {
-              recognitionRef.current.abort();
-            } catch (e) {
-              // Ignore - may not be running
-            }
-          }
 
           // Track if this is a test mode (don't reset mood/gesture after speaking)
           isTestModeRef.current = semantics.isTest;
@@ -904,33 +878,38 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
           // Use HeadTTS to synthesize speech
           // The onmessage handler will pass audio to TalkingHead for lip-sync
           // Recognition is resumed in the audio finish callback
+          // Add timeout in case TTS fails silently (e.g., Safari WebGPU issues)
           await new Promise<void>((resolve) => {
             speakResolveRef.current = resolve;
+
+            // Timeout after 30 seconds in case TTS never responds
+            const timeout = setTimeout(() => {
+              console.warn("[TTS] Synthesis timeout - TTS may not be working in this browser");
+              if (speakResolveRef.current === resolve) {
+                setIsSpeaking(false);
+                isSpeakingRef.current = false;
+                updateState("connected");
+                speakResolveRef.current = null;
+                resolve();
+              }
+            }, 30000);
+
             headTTSRef.current!.synthesize({
               input: text,
             });
+
+            // Clear timeout when resolved normally
+            const originalResolve = speakResolveRef.current;
+            speakResolveRef.current = () => {
+              clearTimeout(timeout);
+              originalResolve?.();
+            };
           });
         } catch (error) {
           console.error("Error speaking:", error);
           setIsSpeaking(false);
           isSpeakingRef.current = false;
-          speakingEndedTimeRef.current = Date.now();
           updateState("connected");
-          // Try to resume recognition on error with delay
-          setTimeout(() => {
-            if (
-              recognitionRef.current &&
-              !speechRecognitionBlockedRef.current &&
-              !isVoiceMutedRef.current &&
-              !isSpeakingRef.current
-            ) {
-              try {
-                recognitionRef.current.start();
-              } catch (e) {
-                // Ignore
-              }
-            }
-          }, 1500);
         }
       },
       [updateState, speechSpeed]
@@ -952,12 +931,14 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
       }
       setIsSpeaking(false);
       isSpeakingRef.current = false;
-      speakingEndedTimeRef.current = Date.now();
       updateState("connected");
     }, [updateState]);
 
-    // Mute voice (stop listening)
+    // Mute voice (stop listening and send accumulated transcript)
     const muteVoice = useCallback(() => {
+      console.log(`[Speech] muteVoice called, accumulated transcript: "${accumulatedTranscriptRef.current}"`);
+
+      // Stop recognition first
       if (recognitionRef.current) {
         try {
           recognitionRef.current.abort();
@@ -965,26 +946,50 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
           // Ignore
         }
       }
+
+      // Send accumulated transcript if any, or fallback to last interim (for Safari)
+      let transcript = accumulatedTranscriptRef.current.trim();
+
+      // If no final results were accumulated, use the last interim result (Safari fallback)
+      if (!transcript && lastInterimTranscriptRef.current) {
+        transcript = lastInterimTranscriptRef.current.trim();
+        console.log(`[Speech] Using interim transcript as fallback (Safari): "${transcript}"`);
+      }
+
+      if (transcript) {
+        console.log(`[Speech] Sending transcript: "${transcript}"`);
+        onUserTranscription?.(transcript);
+        accumulatedTranscriptRef.current = "";
+        lastInterimTranscriptRef.current = "";
+      } else {
+        console.log(`[Speech] No transcript to send`);
+      }
+
       setIsVoiceMuted(true);
       isVoiceMutedRef.current = true;
-    }, []);
+      updateState("connected");
+    }, [onUserTranscription, updateState]);
 
     // Unmute voice (start listening)
     const unmuteVoice = useCallback(() => {
+      // Clear any previous accumulated transcript
+      accumulatedTranscriptRef.current = "";
+      lastInterimTranscriptRef.current = "";
+
       setIsVoiceMuted(false);
       isVoiceMutedRef.current = false;
       if (
         recognitionRef.current &&
-        !speechRecognitionBlockedRef.current &&
-        state === "connected"
+        !speechRecognitionBlockedRef.current
       ) {
         try {
           recognitionRef.current.start();
+          console.log("[Speech] Recognition started for new session");
         } catch (e) {
           // Ignore - may already be running
         }
       }
-    }, [state]);
+    }, []);
 
     const getIsVoiceMuted = useCallback(() => {
       return isVoiceMuted;
@@ -1054,7 +1059,6 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
       }
       setIsSpeaking(false);
       isSpeakingRef.current = false;
-      lastSpokenTextRef.current = "";
 
       const newType = avatarTypeRef.current === "female" ? "male" : "female";
       avatarTypeRef.current = newType;
@@ -1288,11 +1292,6 @@ const TalkingHeadAvatar = forwardRef<TalkingHeadAvatarHandle, TalkingHeadAvatarP
         <div className={`mt-4 text-lg font-semibold ${stateColors[state]}`}>
           {stateLabels[state]}
         </div>
-
-        {/* Medical disclaimer */}
-        <p className="mt-2 text-xs text-gray-500 text-center max-w-md px-4">
-          This AI assistant provides general health information only and is not a substitute for professional medical advice, diagnosis, or treatment.
-        </p>
       </div>
     );
   }

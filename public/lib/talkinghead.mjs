@@ -3142,9 +3142,10 @@ class TalkingHead {
                 for( let j=0; j<val.visemes.length; j++ ) {
                   const t = time + (val.times[j]/dTotal) * duration;
                   const d = (val.durations[j]/dTotal) * duration;
+                  const visemeOffset = 40; // ms to shift visemes earlier (reduce audio-visual lag)
                   lipsyncAnim.push( {
                     template: { name: 'viseme' },
-                    ts: [ t - Math.min(60,2*d/3), t + Math.min(25,d/2), t + d + Math.min(60,d/2) ],
+                    ts: [ t - visemeOffset - Math.min(60,2*d/3), t - visemeOffset + Math.min(25,d/2), t - visemeOffset + d + Math.min(60,d/2) ],
                     vs: {
                       ['viseme_'+val.visemes[j]]: [null,(val.visemes[j] === 'PP' || val.visemes[j] === 'FF') ? 0.9 : level, 0]
                     }
@@ -3158,13 +3159,14 @@ class TalkingHead {
 
       // If visemes were specified, use them
       if ( r.visemes ) {
+        const visemeOffset = 40; // ms to shift visemes earlier (reduce audio-visual lag)
         for( let i=0; i<r.visemes.length; i++ ) {
           const viseme = r.visemes[i];
           const time = r.vtimes[i];
           const duration = r.vdurations[i];
           lipsyncAnim.push( {
             template: { name: 'viseme' },
-            ts: [ time - 2 * duration/3, time + duration/2, time + duration + duration/2 ],
+            ts: [ time - visemeOffset - 2 * duration/3, time - visemeOffset + duration/2, time - visemeOffset + duration + duration/2 ],
             vs: {
               ['viseme_'+viseme]: [null,(viseme === 'PP' || viseme === 'FF') ? 0.9 : 0.6, 0]
             }
