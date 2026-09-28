@@ -2,7 +2,7 @@ import { CoachResponse, EvidenceItem, SufficiencyReason } from "./types";
 
 interface RagResponse {
   request_id: string;
-  answer_status: "full" | "partial" | "refused" | "safety";
+  answer_status: "full" | "partial" | "refused" | "safety" | "unverified";
   answer: string;
   evidence_used: EvidenceItem[];
   evidence_sufficient: boolean;

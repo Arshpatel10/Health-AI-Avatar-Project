@@ -21,6 +21,7 @@ export default function Chat() {
   const [isTyping, setIsTyping] = useState(false); // Track when user is typing
   const [emotionState, setEmotionState] = useState<EmotionState | null>(null); // Track response emotion
   const [isEvidenceSufficient, setIsEvidenceSufficient] = useState(true); // Track evidence sufficiency
+  const [isUnverified, setIsUnverified] = useState(false);
   const [speechSpeed, setSpeechSpeed] = useState(1.0); // Speech speed (0.25 - 4.0)
   const [showVoiceSettings, setShowVoiceSettings] = useState(false); // Toggle voice settings panel
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -34,11 +35,10 @@ export default function Chat() {
     return text.replace(/\[lit_doc_\d+\/chunk_[a-f0-9]+\]/gi, "").replace(/\s{2,}/g, " ").trim();
   };
 
-  // Strip citations AND parenthetical content for speaking (avatar shouldn't speak citations or parentheses)
+  // Keep parenthetical qualifications: removing them can change medical meaning.
   const stripForSpeaking = (text: string): string => {
     return text
       .replace(/\[lit_doc_\d+\/chunk_[a-f0-9]+\]/gi, "") // Remove citations
-      .replace(/\([^)]*\)/g, "") // Remove content inside parentheses
       .replace(/\s{2,}/g, " ") // Collapse multiple spaces
       .trim();
   };
@@ -57,10 +57,10 @@ export default function Chat() {
     if (avatarState === "disconnected") return "disconnected";
     if (avatarState === "listening") return "listening";
     if (avatarState === "speaking") return "speaking";
-    if (!isEvidenceSufficient) return "insufficient";
+    if (!isEvidenceSufficient && !isUnverified) return "insufficient";
     if (emotionState === "supportive") return "supportive";
     return "idle";
-  }, [avatarState, isWarningActive, isProcessing, isTyping, emotionState, isEvidenceSufficient]);
+  }, [avatarState, isWarningActive, isProcessing, isTyping, emotionState, isEvidenceSufficient, isUnverified]);
 
   const displayState = getDisplayState();
 
@@ -109,6 +109,7 @@ export default function Chat() {
     setIsWarningActive(false); // Clear warning state on new voice input
     setEmotionState(null); // Clear emotion state on new input
     setIsEvidenceSufficient(true); // Reset evidence sufficiency
+    setIsUnverified(false);
 
     // Add user message to chat
     const userMessage: ChatMessage = { role: "user", text };
@@ -134,13 +135,14 @@ export default function Chat() {
       // Set emotion state and evidence sufficiency based on response
       setEmotionState(response.emotion_state);
       setIsEvidenceSufficient(response.evidence_sufficient);
+      setIsUnverified(response.answer_status === "unverified");
 
       // Add assistant message to chat
       const assistantMessage: ChatMessage = { role: "assistant", response };
       setMessages((prev) => [...prev, assistantMessage]);
 
       // Have the avatar speak the response from our backend
-      // Strip citations and parenthetical content before speaking
+      // Strip citation markers before speaking.
       if (avatarRef.current) {
         const textToSpeak = stripForSpeaking(response.answer);
         pendingTextResponseRef.current = textToSpeak; // Mark to avoid duplicate in transcription
@@ -174,6 +176,7 @@ export default function Chat() {
     setIsWarningActive(false);
     setEmotionState(null);
     setIsEvidenceSufficient(true);
+    setIsUnverified(false);
 
     // Add user message to chat
     const userMessage: ChatMessage = { role: "user", text };
@@ -193,13 +196,14 @@ export default function Chat() {
       // Set emotion state and evidence sufficiency based on response
       setEmotionState(response.emotion_state);
       setIsEvidenceSufficient(response.evidence_sufficient);
+      setIsUnverified(response.answer_status === "unverified");
 
       // Add assistant message to chat
       const assistantMessage: ChatMessage = { role: "assistant", response };
       setMessages((prev) => [...prev, assistantMessage]);
 
       // Have the avatar speak the response
-      // Strip citations and parenthetical content before speaking
+      // Strip citation markers before speaking.
       if (avatarRef.current && (avatarState === "connected" || avatarState === "listening" || avatarState === "speaking")) {
         const textToSpeak = stripForSpeaking(response.answer);
         pendingTextResponseRef.current = textToSpeak; // Mark as text-initiated to avoid duplicate
@@ -271,7 +275,7 @@ export default function Chat() {
             }`} />
             {displayState === "idle" && "Ready"}
             {displayState === "listening" && "Listening..."}
-            {displayState === "thinking" && "Checking evidence..."}
+            {displayState === "thinking" && "Preparing response..."}
             {displayState === "speaking" && "Speaking..."}
             {displayState === "supportive" && "Supportive"}
             {displayState === "warning" && "Warning"}
@@ -350,7 +354,7 @@ export default function Chat() {
                   </svg>
                 </div>
                 <div className="bg-yellow-100 text-yellow-800 px-5 py-3 rounded-2xl rounded-tl-none shadow-sm flex items-center gap-2">
-                  <span className="text-sm">Checking evidence...</span>
+                  <span className="text-sm">Preparing response...</span>
                   <span className="flex gap-1">
                     <span className="w-1.5 h-1.5 bg-yellow-600 rounded-full animate-bounce" style={{ animationDelay: "0s" }}></span>
                     <span className="w-1.5 h-1.5 bg-yellow-600 rounded-full animate-bounce" style={{ animationDelay: "0.15s" }}></span>
@@ -388,7 +392,7 @@ export default function Chat() {
               onSend={handleSend}
               onTypingChange={setIsTyping}
               disabled={isProcessing}
-              placeholder={isProcessing ? "Checking the evidence..." : avatarState === "connected" ? "Type a message or speak to the avatar..." : "Ask a general HFpEF or CKM health question..."}
+              placeholder={isProcessing ? "Preparing response..." : avatarState === "connected" ? "Type a message or speak to the avatar..." : "Ask a general HFpEF or CKM health question..."}
               onMicToggle={(isMuted) => {
                 if (avatarRef.current) {
                   if (isMuted) {

@@ -71,13 +71,13 @@ function EvidenceItemDisplay({ source }: { source: EvidenceItem }) {
   );
 }
 
-function EvidenceSection({ sources }: { sources: EvidenceItem[] }) {
+function EvidenceSection({ sources, unverified = false }: { sources: EvidenceItem[]; unverified?: boolean }) {
   if (sources.length === 0) return null;
 
   return (
     <div className="mt-3 border-t border-white/20 pt-3">
       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-black/70">
-        Sources
+        {unverified ? "Retrieved passages (not verified citations)" : "Sources"}
       </p>
       <div className="flex flex-col gap-2">
         {sources.map((source, index) => (
@@ -171,12 +171,15 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
         {getEmotionIcon()}
       </div>
       <div className={`${style.container} p-4 rounded-2xl rounded-tl-none shadow-sm`}>
-        {response.emotion_state === "supportive" && !response.evidence_sufficient && (
+        {response.answer_status === "unverified" && (
+          <span className="text-xs font-medium text-teal-800 mb-1 block">Research draft · not automatically verified</span>
+        )}
+        {response.emotion_state === "supportive" && !response.evidence_sufficient && response.answer_status !== "unverified" && (
           <span className="text-xs font-medium text-orange-600 mb-1 block">Insufficient Evidence</span>
         )}
-        <p className="text-base leading-relaxed">{stripCitations(response.answer)}</p>
+        <p className="text-base leading-relaxed whitespace-pre-wrap">{response.answer_status === "unverified" ? response.answer : stripCitations(response.answer)}</p>
         <span className="text-xs mt-2 block opacity-80">{formatTime()}</span>
-        <EvidenceSection sources={response.evidence_used} />
+        <EvidenceSection sources={response.evidence_used} unverified={response.answer_status === "unverified"} />
       </div>
     </div>
   );

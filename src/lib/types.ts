@@ -1,6 +1,7 @@
 export type EmotionState = "supportive" | "warning";
 
 export type SufficiencyReason =
+  | "not_assessed"
   | "sufficient"
   | "low_similarity"
   | "insufficient_direct_support"
@@ -24,7 +25,7 @@ export interface EvidenceItem {
 
 export interface CoachResponse {
   request_id?: string;
-  answer_status?: "full" | "partial" | "refused" | "safety";
+  answer_status?: "full" | "partial" | "refused" | "safety" | "unverified";
   answer: string;
   evidence_used: EvidenceItem[];
   evidence_sufficient: boolean;
